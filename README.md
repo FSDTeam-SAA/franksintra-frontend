@@ -34,3 +34,20 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Docker
+
+This project uses Next.js standalone output, so the production image stays small and only ships the server runtime.
+
+1. Copy `.env.example` to `.env` and set the values for your environment.
+2. Build the image with `docker compose build`.
+3. Start it with `docker compose up -d`.
+4. Open the app at `http://localhost:3000`.
+
+To push the image to Docker Hub:
+
+1. Build it with a tag: `docker build -t <your-dockerhub-user>/franksintra:1.0.0 .`
+2. Log in: `docker login`
+3. Push it: `docker push <your-dockerhub-user>/franksintra:1.0.0`
+
+For production, set `NEXT_PUBLIC_API_URL` to the real API URL before building, and set `NEXTAUTH_URL` to your deployed frontend URL.

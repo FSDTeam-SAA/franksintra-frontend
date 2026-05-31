@@ -14,6 +14,7 @@ import {
   Sparkles,
   Wand2,
 } from 'lucide-react'
+import Image from 'next/image'
 
 import { AppHeader } from '@/components/gbp/AppHeader'
 import { Badge } from '@/components/ui/badge'
@@ -205,9 +206,12 @@ Enjoy fresh seasonal dishes, eco-friendly packaging, and a limited-time local di
             }}
           >
             <div className="flex w-full items-start gap-3">
-              <img
+              <Image
                 src={item.image}
                 alt="history thumb"
+                width={56}
+                height={56}
+                unoptimized
                 className="h-14 w-14 rounded-xl object-cover"
               />
               <div className="min-w-0 flex-1">
@@ -282,9 +286,12 @@ Enjoy fresh seasonal dishes, eco-friendly packaging, and a limited-time local di
                   <p className="mb-2 text-sm font-medium uppercase tracking-wide text-slate-500">
                     Uploaded Preview
                   </p>
-                  <img
+                  <Image
                     src={uploadedImage}
                     alt="uploaded"
+                    width={1200}
+                    height={800}
+                    unoptimized
                     className="h-44 w-full rounded-xl object-cover"
                   />
                 </div>
@@ -292,8 +299,7 @@ Enjoy fresh seasonal dishes, eco-friendly packaging, and a limited-time local di
 
               <Card className="rounded-2xl border bg-white p-0">
                 <Accordion
-                  type="single"
-                  value={extraDetailsOpen ? 'details' : ''}
+                  value={extraDetailsOpen ? ['details'] : []}
                   className="w-full"
                 >
                   <AccordionItem value="details" className="border-0 px-4">
@@ -495,14 +501,16 @@ Enjoy fresh seasonal dishes, eco-friendly packaging, and a limited-time local di
               </div>
 
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="rounded-xl px-4 text-[15px]"
-                  >
-                    Export <ChevronDown className="ml-2 h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      variant="outline"
+                      className="rounded-xl px-4 text-[15px]"
+                    >
+                      Export <ChevronDown className="ml-2 h-4 w-4" />
+                    </Button>
+                  }
+                />
                 <DropdownMenuContent align="start">
                   <DropdownMenuItem onClick={handleCopy}>
                     Copy Text
@@ -523,11 +531,13 @@ Enjoy fresh seasonal dishes, eco-friendly packaging, and a limited-time local di
                 </CardDescription>
               </div>
               <Sheet>
-                <SheetTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <History className="mr-2 h-4 w-4" /> Open
-                  </Button>
-                </SheetTrigger>
+                <SheetTrigger
+                  render={
+                    <Button variant="outline" size="sm">
+                      <History className="mr-2 h-4 w-4" /> Open
+                    </Button>
+                  }
+                />
                 <SheetContent
                   side="bottom"
                   className="max-h-[80vh] overflow-y-auto"
@@ -555,9 +565,12 @@ Enjoy fresh seasonal dishes, eco-friendly packaging, and a limited-time local di
             <CardContent className="p-0">
               <div className="rounded-2xl border bg-white p-4">
                 {uploadedImage ? (
-                  <img
+                  <Image
                     src={uploadedImage}
                     alt="preview"
+                    width={1200}
+                    height={800}
+                    unoptimized
                     className="h-40 w-full rounded-xl object-cover"
                   />
                 ) : (

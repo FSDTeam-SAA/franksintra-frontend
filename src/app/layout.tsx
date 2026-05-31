@@ -1,15 +1,9 @@
 import type { Metadata } from "next";
-import { Manrope } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { AppProvider } from "@/components/providers/AppProvider";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { Toaster } from "@/components/ui/sonner";
-
-const manrope = Manrope({
-  subsets: ["latin"],
-  variable: "--font-sans",
-});
 
 export const metadata: Metadata = {
   title: "Next.js Boilerplate",
@@ -24,10 +18,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={cn(
-          "min-h-screen bg-background font-sans antialiased",
-          manrope.variable
-        )}
+        className={cn("min-h-screen bg-background font-sans antialiased")}
       >
         <AuthProvider>
           <AppProvider>

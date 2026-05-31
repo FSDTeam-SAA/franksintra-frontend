@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.DS_Store
+coverage
+*.log
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+Dockerfile
+docker-compose.yml
