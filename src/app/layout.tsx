@@ -6,8 +6,8 @@ import { AuthProvider } from "@/components/providers/AuthProvider";
 import { Toaster } from "@/components/ui/sonner";
 
 export const metadata: Metadata = {
-  title: "Next.js Boilerplate",
-  description: "A Next.js boilerplate project",
+  title: "GBP Pilot",
+  description: "AI-assisted Google Business Profile content workflow",
 };
 
 export default function RootLayout({

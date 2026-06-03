@@ -87,7 +87,7 @@
     box-sizing: border-box;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground overflow-x-hidden;
     text-rendering: optimizeLegibility;
   }
   html {

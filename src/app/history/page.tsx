@@ -1,11 +1,10 @@
 import { AppHeader } from "@/components/gbp/AppHeader";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const rows = [
-  { id: 1, text: "Weekend brunch offer with eco packaging", date: "May 24, 2026", status: "Scheduled" },
-  { id: 2, text: "Seasonal launch post with local SEO keywords", date: "May 20, 2026", status: "Published" },
-  { id: 3, text: "Cafe ambience photo spotlight", date: "May 18, 2026", status: "Draft" },
+  { id: 1, text: "Weekend brunch offer with eco packaging", /* date: "May 24, 2026", */ /* status: "Scheduled" */ },
+  { id: 2, text: "Seasonal launch post with local SEO keywords", /* date: "May 20, 2026", */ /* status: "Published" */ },
+  { id: 3, text: "Cafe ambience photo spotlight", /* date: "May 18, 2026", */ /* status: "Draft" */ },
 ];
 
 export default function HistoryPage() {
@@ -20,8 +19,8 @@ export default function HistoryPage() {
               <div key={row.id} className="rounded-xl border bg-white p-4 transition-all duration-300 hover:shadow-sm">
                 <p className="font-medium text-slate-900">{row.text}</p>
                 <div className="mt-2 flex items-center gap-3 text-sm text-slate-600">
-                  <span>{row.date}</span>
-                  <Badge variant="secondary">{row.status}</Badge>
+                  {/* <span>{row.date}</span>
+                  <Badge variant="secondary">{row.status}</Badge> */}
                 </div>
               </div>
             ))}

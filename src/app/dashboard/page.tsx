@@ -1,4 +1,5 @@
-import { CalendarDays, FileText, ImageUp, Sparkles } from "lucide-react";
+// import { CalendarDays, FileText, ImageUp, Sparkles } from "lucide-react";
+import { FileText, ImageUp, Sparkles } from "lucide-react";
 
 import { AppHeader } from "@/components/gbp/AppHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,10 +15,10 @@ export default function DashboardPage() {
             <CardHeader><CardTitle className="text-lg">Drafts</CardTitle></CardHeader>
             <CardContent className="flex items-center justify-between"><span>12 active drafts</span><FileText className="h-5 w-5 text-[#4285F4]" /></CardContent>
           </Card>
-          <Card className="rounded-xl shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
+          {/* <Card className="rounded-xl shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
             <CardHeader><CardTitle className="text-lg">Scheduled</CardTitle></CardHeader>
             <CardContent className="flex items-center justify-between"><span>8 upcoming posts</span><CalendarDays className="h-5 w-5 text-[#4285F4]" /></CardContent>
-          </Card>
+          </Card> */}
           <Card className="rounded-xl shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
             <CardHeader><CardTitle className="text-lg">AI Credits</CardTitle></CardHeader>
             <CardContent className="flex items-center justify-between"><span>246 remaining</span><Sparkles className="h-5 w-5 text-[#4285F4]" /></CardContent>
