@@ -2,8 +2,6 @@
 
 import * as React from 'react'
 import {
-  BadgeCheck,
-  CalendarDays,
   Check,
   ChevronDown,
   Copy,
@@ -12,14 +10,23 @@ import {
   Loader2,
   MessageSquare,
   Sparkles,
+  Trash2,
   Wand2,
 } from 'lucide-react'
 import Image from 'next/image'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 
 import { AppHeader } from '@/components/gbp/AppHeader'
+import { AiThinkingLoader } from '@/components/gbp/AiThinkingLoader'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Calendar } from '@/components/ui/calendar'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
 import {
   Card,
   CardContent,
@@ -27,12 +34,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,200 +49,555 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet'
-import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import {
+  getApiErrorMessage,
+  formatAiContentForCopy,
+  getDuplicateJobId,
+  getJob,
+  getJobsHistory,
+  parseAiGeneratedContent,
+  deleteJob,
+  refineJob,
+  uploadJob,
+  type JobHistoryItem,
+  type ParsedAiContent,
+  type JobStatus,
+} from '@/lib/jobs'
 
-type HistoryStatus = 'Scheduled' | 'Published' | 'Draft'
-type DotKind = 'offer' | 'post' | 'photo'
+type HistoryStatus = 'Published' | 'Draft'
+type GenerationMode = 'upload' | 'refine'
+type RefineFieldKey = (typeof REFINE_FIELDS)[number]['key']
 
-type HistoryItem = {
-  id: string
-  image: string
-  title: string
-  date: string
-  status: HistoryStatus
-  similarity: string
+const REFINE_FIELDS = [
+  {
+    key: 'title',
+    label: 'Title',
+    description: 'Refine the main title shown in the content pack.',
+    placeholder: 'Make the title clearer, shorter, or more appealing.',
+  },
+  {
+    key: 'caption',
+    label: 'Caption',
+    description: 'Rewrite the short caption that goes with the image.',
+    placeholder: 'Make the caption warmer, cleaner, or more engaging.',
+  },
+  {
+    key: 'SEO_keywords',
+    label: 'SEO Keywords',
+    description: 'Improve search terms and local discoverability.',
+    placeholder: 'Add city, service, or keyword ideas.',
+  },
+  {
+    key: 'description',
+    label: 'Description',
+    description: 'Rewrite the business description in a clearer tone.',
+    placeholder: 'Rewrite for clarity, trust, or conversion.',
+  },
+  {
+    key: 'assign_location',
+    label: 'Location',
+    description: 'Set the location field used by the AI output.',
+    placeholder: 'Add the city, area, or target location.',
+  },
+  {
+    key: 'gmb_post',
+    label: 'GMB Post',
+    description: 'Refine the main copy that gets pasted into GMB.',
+    placeholder: 'Make the post shorter, warmer, or more persuasive.',
+  },
+  {
+    key: 'file_name',
+    label: 'File Name',
+    description: 'Create a cleaner file name for the asset.',
+    placeholder: 'Rename the file with a useful, descriptive name.',
+  },
+] as const
+
+const initialFieldInputs = REFINE_FIELDS.reduce((accumulator, field) => {
+  accumulator[field.key] = ''
+  return accumulator
+}, {} as Record<RefineFieldKey, string>)
+
+function getHistoryStatus(jobStatus: JobStatus): HistoryStatus {
+  return jobStatus === 'DONE' ? 'Published' : 'Draft'
 }
 
-const MOCK_HISTORY: HistoryItem[] = [
-  {
-    id: '1',
-    image:
-      'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=200&q=80',
-    title: 'Weekend brunch deal with fresh bakery add-ons now live.',
-    date: 'May 24, 2026',
-    status: 'Scheduled',
-    similarity: '94% visual match',
-  },
-  {
-    id: '2',
-    image:
-      'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=200&q=80',
-    title: 'Eco-friendly packaging update and reusable cup rewards.',
-    date: 'May 20, 2026',
-    status: 'Published',
-    similarity: '88% visual match',
-  },
-  {
-    id: '3',
-    image:
-      'https://images.unsplash.com/photo-1521017432531-fbd92d768814?auto=format&fit=crop&w=200&q=80',
-    title: 'New seasonal launch with limited-time in-store tasting.',
-    date: 'May 18, 2026',
-    status: 'Draft',
-    similarity: '83% visual match',
-  },
-]
-
-const MOCK_DOTS: Record<string, DotKind[]> = {
-  '2026-05-27': ['offer'],
-  '2026-05-29': ['post'],
-  '2026-05-30': ['photo'],
-  '2026-06-02': ['offer', 'post'],
+function getHistoricalPreviewText(job: JobHistoryItem) {
+  return job.originalFilename.replace(/\.[^.]+$/, '')
 }
 
-const initialPost = `🌿 Fresh flavors are in for the weekend at Frank's Bistro!
+function getRefineFieldLabel(fieldKey: RefineFieldKey) {
+  return (
+    REFINE_FIELDS.find((field) => field.key === fieldKey)?.label ?? fieldKey
+  )
+}
 
-Enjoy our chef-crafted seasonal menu made with local ingredients and sustainable packaging. Bring a friend and ask about our limited-time weekend discount.
+function getRefineFieldValue(
+  fieldKey: RefineFieldKey,
+  content: ParsedAiContent | null,
+) {
+  if (!content) return ''
 
-Visit us today and turn your weekend into something delicious. 📍`
+  switch (fieldKey) {
+    case 'title':
+      return content.title
+    case 'caption':
+      return content.caption
+    case 'SEO_keywords':
+      return content.keywords.join(', ')
+    case 'description':
+      return content.description
+    case 'assign_location':
+      return content.location
+    case 'gmb_post':
+      return content.gmbPost
+    case 'file_name':
+      return content.fileName
+    default:
+      return ''
+  }
+}
+
+function getPreviewImageClassName() {
+  return 'h-[260px] w-full rounded-2xl object-contain bg-slate-50'
+}
+
+function RefineFieldCard({
+  field,
+  value,
+  onChange,
+  onSubmit,
+  disabled,
+  pending,
+}: {
+  field: (typeof REFINE_FIELDS)[number]
+  value: string
+  onChange: (value: string) => void
+  onSubmit: () => void
+  disabled: boolean
+  pending: boolean
+}) {
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <Label className="text-sm font-semibold text-slate-900">
+            {field.label}
+          </Label>
+          <p className="mt-1 text-sm text-slate-600">{field.description}</p>
+        </div>
+        {pending ? (
+          <span className="inline-flex items-center gap-2 rounded-full bg-sky-50 px-3 py-1 text-sm font-medium text-sky-700">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Sending
+          </span>
+        ) : null}
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <Textarea
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={field.placeholder}
+          disabled={disabled}
+          className="min-h-24 rounded-2xl border-slate-200 bg-slate-50 px-4 py-3 text-[15px] leading-6"
+        />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Button
+            type="button"
+            className="rounded-xl bg-[#4285F4] px-4 text-[15px] hover:bg-[#3777dd]"
+            onClick={onSubmit}
+            disabled={disabled || !value.trim()}
+          >
+            <Wand2 className="mr-2 h-4 w-4" />
+            Update
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function Home() {
+  const queryClient = useQueryClient()
   const [uploadedImage, setUploadedImage] = React.useState<string | null>(null)
-  const [isGenerating, setIsGenerating] = React.useState(false)
+  const [selectedFile, setSelectedFile] = React.useState<File | null>(null)
+  const [activeJobId, setActiveJobId] = React.useState<string | null>(null)
+  const [currentStatus, setCurrentStatus] = React.useState<JobStatus | null>(null)
+  const [generationMode, setGenerationMode] =
+    React.useState<GenerationMode>('upload')
   const [postText, setPostText] = React.useState('')
+  const [aiContent, setAiContent] = React.useState<ParsedAiContent | null>(null)
   const [extraDetailsOpen, setExtraDetailsOpen] = React.useState(false)
   const [extraDetails, setExtraDetails] = React.useState('')
-  const [showRefineInput, setShowRefineInput] = React.useState(false)
-  const [refineInput, setRefineInput] = React.useState('')
-  const [refineHistory, setRefineHistory] = React.useState<
-    Array<{ role: 'user' | 'ai'; text: string }>
+  const [showRefinePanel, setShowRefinePanel] = React.useState(false)
+  const [fieldInputs, setFieldInputs] =
+    React.useState<Record<RefineFieldKey, string>>(initialFieldInputs)
+  const [activeFieldKey, setActiveFieldKey] =
+    React.useState<RefineFieldKey | null>(null)
+  const [refineActivity, setRefineActivity] = React.useState<
+    Array<{
+      field: RefineFieldKey
+      instruction: string
+      response: string
+      createdAt: string
+    }>
   >([])
   const [copied, setCopied] = React.useState(false)
-  const [scheduleMode, setScheduleMode] = React.useState<'auto' | 'manual'>(
-    'auto',
+  const [deleteDialogJobId, setDeleteDialogJobId] = React.useState<string | null>(
+    null,
   )
-  const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(
-    new Date(2026, 4, 30),
-  )
-  const [gmbConnected, setGmbConnected] = React.useState(false)
-  const [lastSaved, setLastSaved] = React.useState(new Date())
+
+  const historyQuery = useQuery({
+    queryKey: ['jobs-history'],
+    queryFn: () => getJobsHistory(1, 8),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  })
+
+  const jobQuery = useQuery({
+    queryKey: ['job', activeJobId],
+    queryFn: () => getJob(activeJobId as string),
+    enabled: Boolean(activeJobId),
+    refetchOnWindowFocus: false,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      return status === 'PENDING' || status === 'PROCESSING' ? 2000 : false
+    },
+  })
+
+  const uploadMutation = useMutation({
+    mutationFn: uploadJob,
+    onMutate: async () => {
+      setGenerationMode('upload')
+      setCurrentStatus('PENDING')
+      setPostText('')
+      setAiContent(null)
+      setRefineActivity([])
+      setShowRefinePanel(false)
+    },
+    onSuccess: async (data) => {
+      setActiveJobId(data.jobId)
+      setCurrentStatus(data.status)
+      toast.success('Image uploaded. AI processing started.')
+      await queryClient.invalidateQueries({ queryKey: ['jobs-history'] })
+    },
+    onError: async (error) => {
+      const duplicateJobId = getDuplicateJobId(error)
+      if (duplicateJobId) {
+        setActiveJobId(duplicateJobId)
+        toast.info('This image already exists. Loading the existing job.')
+        return
+      }
+
+      toast.error(getApiErrorMessage(error))
+      setCurrentStatus(null)
+    },
+  })
+
+  const refineMutation = useMutation({
+    mutationFn: refineJob,
+    onMutate: ({ update_field_name }) => {
+      setGenerationMode('refine')
+      setActiveFieldKey(update_field_name as RefineFieldKey)
+      setCurrentStatus('PROCESSING')
+    },
+    onSuccess: async (data, variables) => {
+      const parsed = parseAiGeneratedContent(data.ai_response)
+      if (parsed) {
+        setAiContent(parsed)
+        setPostText(parsed.gmbPost || parsed.caption || parsed.description || '')
+      } else {
+        setPostText(data.ai_response)
+      }
+      setCurrentStatus('DONE')
+      setFieldInputs((previous) => ({
+        ...previous,
+        [variables.update_field_name as RefineFieldKey]: '',
+      }))
+      setRefineActivity((previous) => [
+        {
+          field: variables.update_field_name as RefineFieldKey,
+          instruction: variables.user_instruction,
+          response:
+            parsed?.gmbPost ||
+            parsed?.caption ||
+            parsed?.description ||
+            data.ai_response,
+          createdAt: new Date().toISOString(),
+        },
+        ...previous,
+      ])
+
+      toast.success(`Updated ${getRefineFieldLabel(variables.update_field_name as RefineFieldKey)}`)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['job', activeJobId] }),
+        queryClient.invalidateQueries({ queryKey: ['jobs-history'] }),
+      ])
+    },
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error))
+      setCurrentStatus('DONE')
+    },
+    onSettled: () => {
+      setActiveFieldKey(null)
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteJob,
+    onSuccess: async (_, jobId) => {
+      toast.success('History item deleted')
+      await queryClient.invalidateQueries({ queryKey: ['jobs-history'] })
+
+      if (activeJobId === jobId) {
+        setActiveJobId(null)
+        setSelectedFile(null)
+        setUploadedImage(null)
+        setCurrentStatus(null)
+        setPostText('')
+        setAiContent(null)
+        setRefineActivity([])
+        setShowRefinePanel(false)
+      }
+    },
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error))
+    },
+  })
 
   React.useEffect(() => {
-    if (!postText) return
-    const t = setTimeout(() => setLastSaved(new Date()), 450)
-    return () => clearTimeout(t)
-  }, [postText, refineHistory])
+    const job = jobQuery.data
+    if (!job) return
+
+    setCurrentStatus(job.status)
+    setUploadedImage(job.originalCloudinaryUrl)
+
+    if (job.status === 'DONE') {
+      const parsed = parseAiGeneratedContent(job.aiRawResponse)
+      setAiContent(parsed)
+      setPostText(parsed?.gmbPost || parsed?.caption || parsed?.description || '')
+    }
+
+    if (job.status === 'FAILED') {
+      toast.error(job.failureReason || 'AI processing failed')
+    }
+  }, [jobQuery.data])
 
   const handleUpload = (file?: File) => {
     if (!file) return
-    const localUrl = URL.createObjectURL(file)
-    setUploadedImage(localUrl)
-    setIsGenerating(true)
-    setShowRefineInput(false)
-    setRefineHistory([])
-
-    setTimeout(() => {
-      setPostText(initialPost)
-      setIsGenerating(false)
-      setLastSaved(new Date())
-    }, 1300)
+    const localPreview = URL.createObjectURL(file)
+    setUploadedImage(localPreview)
+    setSelectedFile(file)
+    setCurrentStatus(null)
+    setActiveJobId(null)
+    setPostText('')
+    setAiContent(null)
+    setRefineActivity([])
+    setShowRefinePanel(false)
   }
 
-  const handleRegenerate = () => {
-    setIsGenerating(true)
-    setTimeout(() => {
-      setPostText(`✨ New week, new reasons to stop by Frank's Bistro.
+  const handleGenerate = () => {
+    if (!selectedFile) {
+      toast.error('Upload an image first')
+      return
+    }
 
-From eco-friendly takeout packaging to handpicked seasonal specials, we've made your local favorite even better. Drop in this week and discover your next go-to order.
-
-Tap directions and visit us today!`)
-      setIsGenerating(false)
-      setLastSaved(new Date())
-    }, 1000)
+    uploadMutation.mutate(selectedFile)
   }
 
   const handleCopy = async () => {
-    if (!postText) return
-    await navigator.clipboard.writeText(postText)
+    if (!displayPostText) return
+    await navigator.clipboard.writeText(displayPostText)
     setCopied(true)
     setTimeout(() => setCopied(false), 1100)
   }
 
-  const submitRefine = () => {
-    if (!refineInput.trim()) return
-    const userMsg = refineInput.trim()
-    const aiMsg = 'Shortened with a stronger CTA and local SEO keywords.'
-    setRefineHistory(prev => [
-      ...prev,
-      { role: 'user', text: userMsg },
-      { role: 'ai', text: aiMsg },
-    ])
-    setPostText(`📣 Weekend special at Frank's Bistro!
-
-Enjoy fresh seasonal dishes, eco-friendly packaging, and a limited-time local discount. Visit today and ask our team for the weekend offer.`)
-    setRefineInput('')
+  const handleCopyGmbPost = async () => {
+    if (!aiContent?.gmbPost) return
+    await navigator.clipboard.writeText(aiContent.gmbPost)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1100)
   }
 
-  const dayDots = (date: Date) => {
-    const key = date.toISOString().slice(0, 10)
-    return MOCK_DOTS[key] ?? []
+  const handleCopyFullPackage = async () => {
+    if (!aiContent) return
+    await navigator.clipboard.writeText(formatAiContentForCopy(aiContent))
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1100)
   }
+
+  const handleDownload = (format: 'txt' | 'json') => {
+    if (!aiContent) return
+
+    const payload =
+      format === 'json'
+        ? JSON.stringify(aiContent, null, 2)
+        : formatAiContentForCopy(aiContent)
+
+    const blob = new Blob([payload], {
+      type: format === 'json' ? 'application/json' : 'text/plain',
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `gbp-ai-response.${format}`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleDeleteHistoryItem = (jobId: string) => {
+    setDeleteDialogJobId(jobId)
+  }
+
+  const confirmDeleteHistoryItem = () => {
+    if (!deleteDialogJobId) return
+
+    deleteMutation.mutate(deleteDialogJobId, {
+      onSettled: () => {
+        setDeleteDialogJobId(null)
+      },
+    })
+  }
+
+  const submitRefineField = (field: RefineFieldKey) => {
+    if (!activeJobId) {
+      toast.error('Upload an image first')
+      return
+    }
+
+    if (currentStatus !== 'DONE') {
+      toast.error('Wait until the current job finishes processing.')
+      return
+    }
+
+    const instruction = fieldInputs[field].trim()
+    if (!instruction) {
+      toast.error('Add a short instruction for this field.')
+      return
+    }
+
+    refineMutation.mutate({
+      jobId: activeJobId,
+      update_field_name: field,
+      user_instruction: instruction,
+    })
+  }
+
+  const historyItems = historyQuery.data?.jobs ?? []
+  const isGenerating =
+    uploadMutation.isPending ||
+    refineMutation.isPending ||
+    currentStatus === 'PENDING' ||
+    currentStatus === 'PROCESSING'
+  const activeJob = jobQuery.data
+  const displayPostText = postText || aiContent?.gmbPost || ''
+  const shouldShowReadyState =
+    Boolean(activeJobId) && currentStatus === 'DONE' && Boolean(aiContent)
+  const deleteTargetJob = historyItems.find((item) => item._id === deleteDialogJobId)
+
+  React.useEffect(() => {
+    if (!aiContent) return
+
+    setFieldInputs((previous) => ({
+      ...previous,
+      title: getRefineFieldValue('title', aiContent),
+      caption: getRefineFieldValue('caption', aiContent),
+      SEO_keywords: getRefineFieldValue('SEO_keywords', aiContent),
+      description: getRefineFieldValue('description', aiContent),
+      assign_location: getRefineFieldValue('assign_location', aiContent),
+      gmb_post: getRefineFieldValue('gmb_post', aiContent),
+      file_name: getRefineFieldValue('file_name', aiContent),
+    }))
+  }, [aiContent])
 
   const HistoryList = () => (
     <div className="space-y-3">
-      {MOCK_HISTORY.map(item => (
-        <Card
-          key={item.id}
-          className="rounded-2xl border bg-white p-0 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-sm"
-        >
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-auto w-full justify-start rounded-2xl px-3 py-3 text-left"
-            onClick={() => {
-              setUploadedImage(item.image)
-              setPostText(item.title + '\n\n' + initialPost.split('\n\n')[1])
-            }}
+      {historyQuery.isLoading ? (
+        <div className="space-y-3 rounded-3xl border bg-white p-4">
+          <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+          <p className="text-sm text-slate-500">Loading recent jobs...</p>
+        </div>
+      ) : historyItems.length ? (
+        historyItems.map((item) => (
+          <Card
+            key={item._id}
+            className="rounded-2xl border bg-white p-0 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-sm"
           >
-            <div className="flex w-full items-start gap-3">
-              <Image
-                src={item.image}
-                alt="history thumb"
-                width={56}
-                height={56}
-                unoptimized
-                className="h-14 w-14 rounded-xl object-cover"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate pr-1 text-[15px] font-medium text-slate-900 md:text-base">
-                  {item.title}
-                </p>
-                <p className="mt-1 text-sm text-slate-500">{item.date}</p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <Badge
-                    variant="secondary"
-                    className={cn(
-                      'rounded-full px-2.5 py-0.5 text-sm',
-                      item.status === 'Published' &&
-                        'bg-emerald-100 text-emerald-700',
-                      item.status === 'Scheduled' &&
-                        'bg-blue-100 text-blue-700',
-                      item.status === 'Draft' && 'bg-slate-100 text-slate-600',
-                    )}
-                  >
-                    {item.status}
-                  </Badge>
-                  <span className="text-sm text-slate-500">
-                    {item.similarity}
-                  </span>
+            <div className="flex w-full items-start gap-3 rounded-2xl px-3 py-3">
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                onClick={() => {
+                  setActiveJobId(item._id)
+                  setSelectedFile(null)
+                  setUploadedImage(item.originalCloudinaryUrl)
+                  setCurrentStatus(item.status)
+                  setGenerationMode('upload')
+                  setShowRefinePanel(false)
+                }}
+              >
+                <Image
+                  src={item.originalCloudinaryUrl}
+                  alt={item.originalFilename}
+                  width={56}
+                  height={56}
+                  unoptimized
+                  className="h-14 w-14 rounded-xl object-cover"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate pr-1 text-[15px] font-medium text-slate-900 md:text-base">
+                    {getHistoricalPreviewText(item)}
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Badge
+                      variant="secondary"
+                      className={cn(
+                        'rounded-full px-2.5 py-0.5 text-sm',
+                        getHistoryStatus(item.status) === 'Published' &&
+                          'bg-emerald-100 text-emerald-700',
+                        getHistoryStatus(item.status) === 'Draft' &&
+                          'bg-slate-100 text-slate-600',
+                      )}
+                    >
+                      {getHistoryStatus(item.status)}
+                    </Badge>
+                    <span className="text-sm text-slate-500">
+                      {item.status === 'DONE' ? 'AI done' : 'Waiting for AI'}
+                    </span>
+                  </div>
                 </div>
-              </div>
+              </button>
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="shrink-0 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                onClick={() => handleDeleteHistoryItem(item._id)}
+                disabled={deleteMutation.isPending}
+                aria-label={`Delete ${item.originalFilename}`}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
             </div>
-          </Button>
-        </Card>
-      ))}
+          </Card>
+        ))
+      ) : (
+        <div className="rounded-3xl border bg-white p-4 text-sm text-slate-500">
+          No backend history yet.
+        </div>
+      )}
     </div>
   )
 
@@ -255,7 +611,8 @@ Enjoy fresh seasonal dishes, eco-friendly packaging, and a limited-time local di
             <CardHeader className="p-0">
               <CardTitle className="text-xl">Step 1 - Upload Image</CardTitle>
               <CardDescription className="pr-2 text-[15px] leading-6">
-                Drop an image and AI starts generating instantly.
+                Drop an image and the backend will create a job, store it, and
+                hand it off to the AI pipeline.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 p-0">
@@ -264,11 +621,15 @@ Enjoy fresh seasonal dishes, eco-friendly packaging, and a limited-time local di
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  onChange={e => handleUpload(e.target.files?.[0])}
+                  onChange={(event) => handleUpload(event.target.files?.[0])}
                 />
                 <div className="flex flex-col items-center gap-3 text-center">
                   <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-slate-500 shadow-sm transition group-hover:scale-105">
-                    <ImagePlus className="h-5 w-5" />
+                    {uploadMutation.isPending ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <ImagePlus className="h-5 w-5" />
+                    )}
                   </div>
                   <div>
                     <p className="text-base font-semibold">
@@ -292,10 +653,36 @@ Enjoy fresh seasonal dishes, eco-friendly packaging, and a limited-time local di
                     width={1200}
                     height={800}
                     unoptimized
-                    className="h-44 w-full rounded-xl object-cover"
+                    className={getPreviewImageClassName()}
                   />
                 </div>
               )}
+
+              <div className="rounded-2xl border bg-white p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium uppercase tracking-wide text-slate-500">
+                      Generate
+                    </p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Select an image, then click the button to start AI generation.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    className="rounded-xl bg-[#4285F4] px-5 text-base hover:bg-[#3777dd]"
+                    onClick={handleGenerate}
+                    disabled={!selectedFile || uploadMutation.isPending}
+                  >
+                    {uploadMutation.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="mr-2 h-4 w-4" />
+                    )}
+                    Generate content
+                  </Button>
+                </div>
+              </div>
 
               <Card className="rounded-2xl border bg-white p-0">
                 <Accordion
@@ -304,7 +691,7 @@ Enjoy fresh seasonal dishes, eco-friendly packaging, and a limited-time local di
                 >
                   <AccordionItem value="details" className="border-0 px-4">
                     <AccordionTrigger
-                      onClick={() => setExtraDetailsOpen(v => !v)}
+                      onClick={() => setExtraDetailsOpen((value) => !value)}
                       className="py-4 text-base font-medium hover:no-underline"
                     >
                       Add extra details (optional)
@@ -312,23 +699,19 @@ Enjoy fresh seasonal dishes, eco-friendly packaging, and a limited-time local di
                     <AccordionContent className="border-t pt-4 animate-in fade-in slide-in-from-top-1 duration-300">
                       <Input
                         value={extraDetails}
-                        onChange={e => setExtraDetails(e.target.value)}
-                        placeholder="Mention our weekend discount or focus on eco-friendly packaging"
+                        onChange={(event) => setExtraDetails(event.target.value)}
+                        placeholder="Mention your weekend discount or focus on eco-friendly packaging"
+                        disabled={isGenerating}
                       />
                     </AccordionContent>
                   </AccordionItem>
                 </Accordion>
               </Card>
 
-              {uploadedImage && (
+              {shouldShowReadyState && (
                 <Card className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-[15px] text-blue-700">
-                  We found a previous post for a similar image -{' '}
-                  <Button
-                    variant="link"
-                    className="h-auto p-0 text-[15px] font-semibold text-blue-700 underline"
-                  >
-                    View History
-                  </Button>
+                  AI job is ready. Open the refine panel or copy the GMB-ready
+                  output.
                 </Card>
               )}
             </CardContent>
@@ -340,28 +723,20 @@ Enjoy fresh seasonal dishes, eco-friendly packaging, and a limited-time local di
                 Step 2 - AI Generated Content
               </CardTitle>
               <CardDescription className="pr-2 text-[15px] leading-6">
-                Auto-saved draft • Last saved{' '}
-                {lastSaved.toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
+                The output below comes from the backend job status and AI
+                response, not a local mock.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 p-0">
               {isGenerating ? (
-                <div className="space-y-3 rounded-2xl border bg-white p-4">
-                  <Skeleton className="h-5 w-2/3" />
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-5/6" />
-                  <Skeleton className="h-4 w-4/6" />
-                </div>
+                <AiThinkingLoader active mode={generationMode} />
               ) : (
                 <div className="rounded-2xl border bg-white p-3.5 animate-in fade-in duration-300">
                   <Textarea
-                    value={postText}
-                    onChange={e => setPostText(e.target.value)}
+                    value={displayPostText}
+                    onChange={(event) => setPostText(event.target.value)}
                     className="min-h-48 resize-y rounded-xl border-0 bg-slate-50 px-4 py-3 text-[15px] leading-7 md:text-base"
-                    placeholder="Generated GBP post will appear here"
+                    placeholder="Generated GMB-ready post will appear here"
                   />
                 </div>
               )}
@@ -370,7 +745,8 @@ Enjoy fresh seasonal dishes, eco-friendly packaging, and a limited-time local di
                 <Button
                   variant="outline"
                   className="rounded-xl px-4 text-[15px] transition-all duration-300 hover:-translate-y-0.5"
-                  onClick={() => setShowRefineInput(v => !v)}
+                  onClick={() => setShowRefinePanel((value) => !value)}
+                  disabled={!activeJobId}
                 >
                   <Wand2 className="mr-2 h-4 w-4" /> Refine
                 </Button>
@@ -378,56 +754,78 @@ Enjoy fresh seasonal dishes, eco-friendly packaging, and a limited-time local di
                   variant="outline"
                   className="rounded-xl px-4 text-[15px] transition-all duration-300 hover:-translate-y-0.5"
                   onClick={handleCopy}
+                  disabled={isGenerating || !displayPostText}
                 >
                   {copied ? (
                     <Check className="mr-2 h-4 w-4 text-emerald-600" />
                   ) : (
                     <Copy className="mr-2 h-4 w-4" />
                   )}
-                  {copied ? 'Copied' : 'Copy'}
+                  {copied ? 'Copied' : 'Copy Post'}
                 </Button>
                 <Button
                   variant="outline"
                   className="rounded-xl px-4 text-[15px] transition-all duration-300 hover:-translate-y-0.5"
-                  onClick={handleRegenerate}
+                  onClick={handleCopyFullPackage}
+                  disabled={isGenerating || !aiContent}
                 >
-                  {isGenerating ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Sparkles className="mr-2 h-4 w-4" />
-                  )}{' '}
-                  Regenerate
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copy Full Pack
                 </Button>
               </div>
 
-              {showRefineInput && (
-                <div className="rounded-2xl border bg-white p-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <Label className="mb-2 block text-sm uppercase tracking-wide text-slate-500">
-                    Refine with AI
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={refineInput}
-                      onChange={e => setRefineInput(e.target.value)}
-                      placeholder='Try "make it shorter" or "add CTA"'
-                    />
-                    <Button onClick={submitRefine}>Send</Button>
+              {showRefinePanel && (
+                <div className="space-y-3 rounded-3xl border bg-slate-50 p-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="space-y-3">
+                    {REFINE_FIELDS.map((field) => (
+                      <RefineFieldCard
+                        key={field.key}
+                        field={field}
+                        value={fieldInputs[field.key]}
+                        onChange={(value) =>
+                          setFieldInputs((previous) => ({
+                            ...previous,
+                            [field.key]: value,
+                          }))
+                        }
+                        onSubmit={() => submitRefineField(field.key)}
+                        disabled={refineMutation.isPending || currentStatus !== 'DONE'}
+                        pending={activeFieldKey === field.key}
+                      />
+                    ))}
                   </div>
-                  {!!refineHistory.length && (
-                    <div className="mt-3 space-y-2 rounded-xl bg-slate-50 p-3">
-                      {refineHistory.map((msg, idx) => (
-                        <div
-                          key={idx}
-                          className={cn(
-                            'max-w-[90%] rounded-xl px-3 py-2.5 text-[15px] leading-6',
-                            msg.role === 'user'
-                              ? 'ml-auto bg-[#4285F4] text-white'
-                              : 'bg-white text-slate-700 shadow-sm',
-                          )}
-                        >
-                          {msg.text}
-                        </div>
-                      ))}
+
+                  {!!refineActivity.length && (
+                    <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                      <p className="text-sm font-semibold text-slate-900">
+                        Recent refine activity
+                      </p>
+                      <div className="mt-3 space-y-3">
+                        {refineActivity.map((entry) => (
+                          <div
+                            key={`${entry.field}-${entry.createdAt}`}
+                            className="rounded-2xl bg-slate-50 px-4 py-3"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge
+                                variant="secondary"
+                                className="rounded-full px-2.5 py-0.5 text-xs"
+                              >
+                                {getRefineFieldLabel(entry.field)}
+                              </Badge>
+                              <span className="text-sm text-slate-500">
+                                {new Date(entry.createdAt).toLocaleString()}
+                              </span>
+                            </div>
+                            <p className="mt-2 text-sm text-slate-700">
+                              {entry.instruction}
+                            </p>
+                            <p className="mt-2 rounded-xl bg-white px-3 py-2 text-sm text-slate-600 shadow-sm">
+                              {entry.response}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -437,69 +835,12 @@ Enjoy fresh seasonal dishes, eco-friendly packaging, and a limited-time local di
 
           <Card className="block h-auto min-h-fit w-full overflow-visible rounded-2xl border-slate-200 p-4 shadow-sm transition-all duration-300 hover:shadow-md box-border">
             <CardHeader className="p-0">
-              <CardTitle className="text-xl">
-                Step 3 - Publish Options
-              </CardTitle>
+              <CardTitle className="text-xl">Step 3 - Export & Copy</CardTitle>
+              <CardDescription className="pr-2 text-[15px] leading-6">
+                Copy the post, export the full content pack, or download it for later.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 p-0">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setScheduleMode('auto')}
-                  className={cn(
-                    'h-auto min-h-[92px] flex-col items-start justify-start rounded-2xl px-4 py-3 text-left transition-all duration-300 hover:-translate-y-0.5',
-                    scheduleMode === 'auto'
-                      ? 'border-[#4285F4] bg-blue-50'
-                      : 'bg-white',
-                  )}
-                >
-                  <p className="text-base font-medium">🤖 Auto Schedule</p>
-                  <p className="mt-1 text-[15px] text-slate-600">
-                    Suggested: May 30, 2026 • 11:30 AM
-                  </p>
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setScheduleMode('manual')}
-                  className={cn(
-                    'h-auto min-h-[92px] flex-col items-start justify-start rounded-2xl px-4 py-3 text-left transition-all duration-300 hover:-translate-y-0.5',
-                    scheduleMode === 'manual'
-                      ? 'border-[#4285F4] bg-blue-50'
-                      : 'bg-white',
-                  )}
-                >
-                  <p className="text-base font-medium">📅 Manual Schedule</p>
-                  <p className="mt-1 text-[15px] text-slate-600">
-                    Pick date from calendar panel
-                  </p>
-                </Button>
-              </div>
-
-              <div className="rounded-2xl border bg-white p-4">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-[15px]">
-                  <span className="font-medium">
-                    Google Business Profile connection
-                  </span>
-                  <span
-                    className={cn(
-                      'inline-flex items-center gap-1',
-                      gmbConnected ? 'text-emerald-600' : 'text-slate-500',
-                    )}
-                  >
-                    <BadgeCheck className="h-4 w-4" />{' '}
-                    {gmbConnected ? 'Connected' : 'Disconnected'}
-                  </span>
-                </div>
-                <Button
-                  className="w-full rounded-xl bg-[#4285F4] text-base hover:bg-[#3777dd]"
-                  onClick={() => setGmbConnected(v => !v)}
-                >
-                  Sync to GMB
-                </Button>
-              </div>
-
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={
@@ -512,11 +853,18 @@ Enjoy fresh seasonal dishes, eco-friendly packaging, and a limited-time local di
                   }
                 />
                 <DropdownMenuContent align="start">
-                  <DropdownMenuItem onClick={handleCopy}>
-                    Copy Text
+                  <DropdownMenuItem onClick={handleCopyGmbPost}>
+                    Copy Post
                   </DropdownMenuItem>
-                  <DropdownMenuItem>Download as .txt</DropdownMenuItem>
-                  <DropdownMenuItem>Download as JSON</DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleCopyFullPackage}>
+                    Copy Full Pack
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleDownload('txt')}>
+                    Download as .txt
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleDownload('json')}>
+                    Download as JSON
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </CardContent>
@@ -527,7 +875,7 @@ Enjoy fresh seasonal dishes, eco-friendly packaging, and a limited-time local di
               <div>
                 <CardTitle className="text-xl">History</CardTitle>
                 <CardDescription className="text-[15px]">
-                  Past generated posts
+                  Past backend jobs
                 </CardDescription>
               </div>
               <Sheet>
@@ -571,77 +919,94 @@ Enjoy fresh seasonal dishes, eco-friendly packaging, and a limited-time local di
                     width={1200}
                     height={800}
                     unoptimized
-                    className="h-40 w-full rounded-xl object-cover"
+                    className={getPreviewImageClassName()}
                   />
                 ) : (
                   <div className="grid h-40 place-items-center rounded-xl bg-slate-100 px-4 text-center text-[15px] text-slate-500">
                     Image preview
                   </div>
                 )}
-                <p className="mt-4 pr-1 text-[15px] leading-7 text-slate-700 md:text-base">
-                  {postText ||
-                    'Your generated GBP post will show here after image upload.'}
-                </p>
-                <p className="mt-3 text-sm text-slate-500">
-                  in {scheduleMode === 'auto' ? '5' : '2'} days
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <Badge variant="secondary" className="rounded-full px-2.5 py-0.5">
+                    {currentStatus ?? 'No job'}
+                  </Badge>
+                  {activeJob?.originalFilename ? (
+                    <span className="text-sm text-slate-500">
+                      {activeJob.originalFilename}
+                    </span>
+                  ) : null}
+                </div>
 
-          <Card className="relative z-0 h-auto min-h-fit w-full shrink-0 overflow-visible rounded-2xl border-slate-200 p-4 shadow-sm transition-all duration-300 hover:shadow-md box-border">
-            <CardHeader className="p-0">
-              <CardTitle className="flex items-center gap-2 text-xl">
-                <CalendarDays className="h-5 w-5" /> Publishing Calendar
-              </CardTitle>
-              <CardDescription className="pr-2 text-[15px] leading-6">
-                Green = Offer, Blue = Post, Amber = Photo
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 p-0">
-              <div className="w-full rounded-2xl border bg-white p-2 box-border">
-                <Calendar
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={setSelectedDate}
-                  className="w-full p-0"
-                  classNames={{
-                    root: 'w-full box-border',
-                    months: 'w-full',
-                    month: 'w-full space-y-4',
-                    nav: 'relative flex w-full items-center justify-between',
-                    month_caption:
-                      'flex h-10 w-full items-center justify-center px-8',
-                    caption_label: 'text-base font-semibold',
-                    table: 'w-full border-collapse',
-                    weekdays: 'grid w-full grid-cols-7 gap-y-1',
-                    weekday:
-                      'w-full text-center text-[0.82rem] font-medium text-muted-foreground',
-                    week: 'mt-1 grid w-full grid-cols-7 gap-y-1',
-                    day: 'relative flex w-full aspect-square p-0 text-center items-center justify-center',
-                    day_button:
-                      'w-full aspect-square h-auto min-w-0 rounded-xl px-5 text-sm transition-all duration-200 flex items-center justify-center',
-                  }}
-                  modifiers={{ marked: date => dayDots(date).length > 0 }}
-                  modifiersClassNames={{
-                    marked: 'font-semibold text-[#4285F4]',
-                  }}
-                />
-              </div>
+                {aiContent ? (
+                  <div className="mt-4 space-y-4">
+                    <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                      <h3 className="text-lg font-semibold text-slate-900">
+                        {aiContent.title || 'AI generated content'}
+                      </h3>
+                      <p className="mt-3 text-sm leading-6 text-slate-600">
+                        {aiContent.caption || 'No caption returned by the AI service.'}
+                      </p>
+                    </div>
 
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-600">
-                <span className="inline-flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  Offer
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full bg-blue-500" />
-                  Post
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full bg-amber-500" />
-                  Photo
-                </span>
+                    <div className="grid gap-3">
+                      <div className="rounded-2xl border bg-white p-3">
+                        <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
+                          SEO Keywords
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {aiContent.keywords.length ? (
+                            aiContent.keywords.map((keyword) => (
+                              <Badge
+                                key={keyword}
+                                variant="secondary"
+                                className="rounded-full bg-slate-100 px-3 py-1 text-slate-700"
+                              >
+                                {keyword}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-sm text-slate-500">
+                              No keywords returned.
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border bg-white p-3">
+                        <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
+                          Description
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-slate-700">
+                          {aiContent.description || 'No description returned by the AI service.'}
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl border bg-white p-3">
+                        <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
+                          Google Business Profile Post
+                        </p>
+                        <p className="mt-2 whitespace-pre-line text-sm leading-7 text-slate-700">
+                          {aiContent.gmbPost || 'No GMB post returned by the AI service.'}
+                        </p>
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-1">
+                        <div className="rounded-2xl border bg-white p-3">
+                          <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
+                            File name
+                          </p>
+                          <p className="mt-2 text-sm leading-6 text-slate-700">
+                            {aiContent.fileName || 'Not provided'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-4 pr-1 text-[15px] leading-7 text-slate-700 md:text-base">
+                    Your generated GBP post will show here after the backend job finishes.
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -652,7 +1017,7 @@ Enjoy fresh seasonal dishes, eco-friendly packaging, and a limited-time local di
                 <MessageSquare className="h-5 w-5" /> History
               </CardTitle>
               <CardDescription className="pr-2 text-[15px] leading-6">
-                Grouped by similar images
+                Grouped by recent backend jobs
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0">
@@ -661,6 +1026,47 @@ Enjoy fresh seasonal dishes, eco-friendly packaging, and a limited-time local di
           </Card>
         </aside>
       </main>
+
+      <Dialog
+        open={Boolean(deleteDialogJobId)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteDialogJobId(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete history item?</DialogTitle>
+            <DialogDescription>
+              {deleteTargetJob
+                ? `This will remove ${deleteTargetJob.originalFilename}, the Cloudinary image, and the AI session.`
+                : 'This will remove the job, Cloudinary image, and AI session.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeleteDialogJobId(null)}
+              disabled={deleteMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={confirmDeleteHistoryItem}
+              disabled={deleteMutation.isPending || !deleteDialogJobId}
+            >
+              {deleteMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

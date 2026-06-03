@@ -10,7 +10,10 @@ export const axiosInstance = axios.create({
 // Adding interceptors (e.g. for attaching auth tokens dynamically if needed)
 axiosInstance.interceptors.request.use(
     (config) => {
-        // You can attach tokens from session here if needed
+        if (typeof FormData !== "undefined" && config.data instanceof FormData) {
+            delete config.headers["Content-Type"];
+        }
+
         return config;
     },
     (error) => {
