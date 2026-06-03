@@ -136,6 +136,68 @@ function toStringArray(value: unknown): string[] {
   return normalized ? [normalized] : [];
 }
 
+function normalizeMultilineText(value: string): string {
+  return value
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function formatGmbPostText(value: unknown): string {
+  if (value == null) {
+    return "";
+  }
+
+  if (typeof value === "string") {
+    try {
+      return formatGmbPostText(JSON.parse(value));
+    } catch {
+      return normalizeMultilineText(value);
+    }
+  }
+
+  if (Array.isArray(value)) {
+    return normalizeMultilineText(
+      value.map((item) => normalizeAiText(item)).filter(Boolean).join("\n"),
+    );
+  }
+
+  if (typeof value !== "object") {
+    return normalizeAiText(value);
+  }
+
+  const record = value as Record<string, unknown>;
+  const responseRecord =
+    record.response && typeof record.response === "object"
+      ? (record.response as Record<string, unknown>)
+      : record;
+
+  const title = normalizeAiText(responseRecord.title);
+  const intro = normalizeAiText(responseRecord.intro);
+  const body = normalizeAiText(responseRecord.body);
+  const features = toStringArray(responseRecord.features);
+  const closing = normalizeAiText(responseRecord.closing);
+  const cta = normalizeAiText(responseRecord.cta);
+  const hashtags = toStringArray(responseRecord.hashtags);
+
+  const sections = [
+    title,
+    intro,
+    body,
+    features.length > 0 ? features.map((feature) => `- ${feature}`).join("\n") : "",
+    closing,
+    cta,
+    hashtags.join("\n"),
+  ].filter(Boolean);
+
+  if (sections.length > 0) {
+    return normalizeMultilineText(sections.join("\n\n"));
+  }
+
+  return normalizeAiText(value);
+}
+
 export function parseAiGeneratedContent(
   value: unknown,
 ): ParsedAiContent | null {
@@ -171,7 +233,7 @@ export function parseAiGeneratedContent(
   const title = normalizeAiText(responseRecord.title);
   const caption = normalizeAiText(responseRecord.caption);
   const description = normalizeAiText(responseRecord.description);
-  const gmbPost = normalizeAiText(responseRecord.gmb_post);
+  const gmbPost = formatGmbPostText(responseRecord.gmb_post);
   const fileName = normalizeAiText(
     responseRecord.file_name ?? responseRecord.filename,
   );

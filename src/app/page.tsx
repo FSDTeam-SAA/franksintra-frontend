@@ -188,7 +188,7 @@ function RefineFieldCard({
   pending: boolean
 }) {
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <Label className="text-sm font-semibold text-slate-900">
@@ -210,12 +210,12 @@ function RefineFieldCard({
           onChange={(event) => onChange(event.target.value)}
           placeholder={field.placeholder}
           disabled={disabled}
-          className="min-h-24 rounded-2xl border-slate-200 bg-slate-50 px-4 py-3 text-[15px] leading-6"
+          className="min-h-24 rounded-2xl border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 sm:text-[15px]"
         />
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <Button
             type="button"
-            className="rounded-xl bg-[#4285F4] px-4 text-[15px] hover:bg-[#3777dd]"
+            className="w-full rounded-xl bg-[#4285F4] px-4 text-sm hover:bg-[#3777dd] sm:w-auto sm:text-[15px]"
             onClick={onSubmit}
             disabled={disabled || !value.trim()}
           >
@@ -230,6 +230,7 @@ function RefineFieldCard({
 
 export default function Home() {
   const queryClient = useQueryClient()
+  const postTextareaRef = React.useRef<HTMLTextAreaElement | null>(null)
   const [uploadedImage, setUploadedImage] = React.useState<string | null>(null)
   const [selectedFile, setSelectedFile] = React.useState<File | null>(null)
   const [activeJobId, setActiveJobId] = React.useState<string | null>(null)
@@ -263,6 +264,7 @@ export default function Home() {
     queryFn: () => getJobsHistory(1, 8),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
   })
 
   const jobQuery = useQuery({
@@ -270,6 +272,9 @@ export default function Home() {
     queryFn: () => getJob(activeJobId as string),
     enabled: Boolean(activeJobId),
     refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
+    retry: 2,
+    refetchIntervalInBackground: true,
     refetchInterval: (query) => {
       const status = query.state.data?.status
       return status === 'PENDING' || status === 'PROCESSING' ? 2000 : false
@@ -290,6 +295,7 @@ export default function Home() {
       setActiveJobId(data.jobId)
       setCurrentStatus(data.status)
       toast.success('Image uploaded. AI processing started.')
+      void queryClient.refetchQueries({ queryKey: ['job', data.jobId], exact: true })
       await queryClient.invalidateQueries({ queryKey: ['jobs-history'] })
     },
     onError: async (error) => {
@@ -297,6 +303,7 @@ export default function Home() {
       if (duplicateJobId) {
         setActiveJobId(duplicateJobId)
         toast.info('This image already exists. Loading the existing job.')
+        void queryClient.refetchQueries({ queryKey: ['job', duplicateJobId], exact: true })
         return
       }
 
@@ -394,6 +401,19 @@ export default function Home() {
     }
   }, [jobQuery.data])
 
+  React.useEffect(() => {
+    if (!jobQuery.isError) return
+
+    setCurrentStatus(null)
+    toast.error(getApiErrorMessage(jobQuery.error))
+  }, [jobQuery.error, jobQuery.isError])
+
+  React.useEffect(() => {
+    if (!historyQuery.isError) return
+
+    toast.error(getApiErrorMessage(historyQuery.error))
+  }, [historyQuery.error, historyQuery.isError])
+
   const handleUpload = (file?: File) => {
     if (!file) return
     const localPreview = URL.createObjectURL(file)
@@ -460,6 +480,16 @@ export default function Home() {
     setDeleteDialogJobId(jobId)
   }
 
+  const handleOpenHistoryJob = (item: JobHistoryItem) => {
+    setActiveJobId(item._id)
+    setSelectedFile(null)
+    setUploadedImage(item.originalCloudinaryUrl)
+    setCurrentStatus(item.status)
+    setGenerationMode('upload')
+    setShowRefinePanel(false)
+    void queryClient.refetchQueries({ queryKey: ['job', item._id], exact: true })
+  }
+
   const confirmDeleteHistoryItem = () => {
     if (!deleteDialogJobId) return
 
@@ -498,6 +528,7 @@ export default function Home() {
   const isGenerating =
     uploadMutation.isPending ||
     refineMutation.isPending ||
+    jobQuery.isFetching ||
     currentStatus === 'PENDING' ||
     currentStatus === 'PROCESSING'
   const activeJob = jobQuery.data
@@ -505,6 +536,14 @@ export default function Home() {
   const shouldShowReadyState =
     Boolean(activeJobId) && currentStatus === 'DONE' && Boolean(aiContent)
   const deleteTargetJob = historyItems.find((item) => item._id === deleteDialogJobId)
+
+  React.useEffect(() => {
+    const textarea = postTextareaRef.current
+    if (!textarea) return
+
+    textarea.style.height = '0px'
+    textarea.style.height = `${textarea.scrollHeight}px`
+  }, [displayPostText])
 
   React.useEffect(() => {
     if (!aiContent) return
@@ -524,9 +563,13 @@ export default function Home() {
   const HistoryList = () => (
     <div className="space-y-3">
       {historyQuery.isLoading ? (
-        <div className="space-y-3 rounded-3xl border bg-white p-4">
+        <div className="space-y-3 rounded-3xl border bg-white p-3 sm:p-4">
           <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
           <p className="text-sm text-slate-500">Loading recent jobs...</p>
+        </div>
+      ) : historyQuery.isError ? (
+        <div className="rounded-3xl border bg-white p-3 text-sm text-rose-600 sm:p-4">
+          Failed to load job history.
         </div>
       ) : historyItems.length ? (
         historyItems.map((item) => (
@@ -534,18 +577,11 @@ export default function Home() {
             key={item._id}
             className="rounded-2xl border bg-white p-0 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-sm"
           >
-            <div className="flex w-full items-start gap-3 rounded-2xl px-3 py-3">
+            <div className="flex w-full flex-col gap-3 rounded-2xl px-3 py-3 sm:flex-row sm:items-start">
               <button
                 type="button"
                 className="flex min-w-0 flex-1 items-start gap-3 text-left"
-                onClick={() => {
-                  setActiveJobId(item._id)
-                  setSelectedFile(null)
-                  setUploadedImage(item.originalCloudinaryUrl)
-                  setCurrentStatus(item.status)
-                  setGenerationMode('upload')
-                  setShowRefinePanel(false)
-                }}
+                onClick={() => handleOpenHistoryJob(item)}
               >
                 <Image
                   src={item.originalCloudinaryUrl}
@@ -583,7 +619,7 @@ export default function Home() {
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                className="shrink-0 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                className="self-end shrink-0 text-slate-400 hover:bg-red-50 hover:text-red-600 sm:self-auto"
                 onClick={() => handleDeleteHistoryItem(item._id)}
                 disabled={deleteMutation.isPending}
                 aria-label={`Delete ${item.originalFilename}`}
@@ -602,21 +638,21 @@ export default function Home() {
   )
 
   return (
-    <div className="min-h-screen bg-slate-50 text-[15px] text-slate-900 md:text-base">
+    <div className="min-h-screen overflow-x-hidden bg-slate-50 text-[15px] text-slate-900 md:text-base">
       <AppHeader />
 
-      <main className="mx-auto grid max-w-7xl items-start gap-6 px-4 py-6 md:grid-cols-5 md:px-6">
+      <main className="mx-auto grid max-w-7xl items-start gap-4 px-3 py-4 sm:px-4 md:grid-cols-5 md:gap-6 md:px-6 md:py-6">
         <section className="flex w-full flex-col gap-4 md:col-span-3">
-          <Card className="block h-auto min-h-fit w-full overflow-visible rounded-2xl border-slate-200 p-4 shadow-sm transition-all duration-300 hover:shadow-md box-border">
+          <Card className="block h-auto min-h-fit w-full overflow-visible rounded-2xl border-slate-200 p-3 shadow-sm transition-all duration-300 hover:shadow-md box-border sm:p-4 md:p-5">
             <CardHeader className="p-0">
-              <CardTitle className="text-xl">Step 1 - Upload Image</CardTitle>
-              <CardDescription className="pr-2 text-[15px] leading-6">
+              <CardTitle className="text-lg sm:text-xl">Step 1 - Upload Image</CardTitle>
+              <CardDescription className="pr-1 text-sm leading-6 sm:pr-2 sm:text-[15px]">
                 Drop an image and the backend will create a job, store it, and
                 hand it off to the AI pipeline.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 p-0">
-              <label className="group block cursor-pointer rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-7 transition-all duration-300 hover:border-[#4285F4] hover:bg-blue-50/40">
+              <label className="group block cursor-pointer rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-5 transition-all duration-300 hover:border-[#4285F4] hover:bg-blue-50/40 sm:p-7">
                 <input
                   type="file"
                   accept="image/*"
@@ -632,10 +668,10 @@ export default function Home() {
                     )}
                   </div>
                   <div>
-                    <p className="text-base font-semibold">
+                    <p className="text-sm font-semibold sm:text-base">
                       Drag and drop image here
                     </p>
-                    <p className="text-[15px] text-slate-500">
+                    <p className="text-sm text-slate-500 sm:text-[15px]">
                       or click to browse from your device
                     </p>
                   </div>
@@ -643,7 +679,7 @@ export default function Home() {
               </label>
 
               {uploadedImage && (
-                <div className="rounded-2xl border bg-white p-4 transition-all duration-300 animate-in fade-in">
+                <div className="rounded-2xl border bg-white p-3 transition-all duration-300 animate-in fade-in sm:p-4">
                   <p className="mb-2 text-sm font-medium uppercase tracking-wide text-slate-500">
                     Uploaded Preview
                   </p>
@@ -658,10 +694,10 @@ export default function Home() {
                 </div>
               )}
 
-              <div className="rounded-2xl border bg-white p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="rounded-2xl border bg-white p-3 sm:p-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="text-sm font-medium uppercase tracking-wide text-slate-500">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500 sm:text-sm">
                       Generate
                     </p>
                     <p className="mt-1 text-sm text-slate-600">
@@ -670,7 +706,7 @@ export default function Home() {
                   </div>
                   <Button
                     type="button"
-                    className="rounded-xl bg-[#4285F4] px-5 text-base hover:bg-[#3777dd]"
+                    className="w-full rounded-xl bg-[#4285F4] px-5 text-base hover:bg-[#3777dd] sm:w-auto"
                     onClick={handleGenerate}
                     disabled={!selectedFile || uploadMutation.isPending}
                   >
@@ -692,7 +728,7 @@ export default function Home() {
                   <AccordionItem value="details" className="border-0 px-4">
                     <AccordionTrigger
                       onClick={() => setExtraDetailsOpen((value) => !value)}
-                      className="py-4 text-base font-medium hover:no-underline"
+                      className="py-4 text-sm font-medium hover:no-underline sm:text-base"
                     >
                       Add extra details (optional)
                     </AccordionTrigger>
@@ -709,7 +745,7 @@ export default function Home() {
               </Card>
 
               {shouldShowReadyState && (
-                <Card className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-[15px] text-blue-700">
+                <Card className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 sm:text-[15px]">
                   AI job is ready. Open the refine panel or copy the GMB-ready
                   output.
                 </Card>
@@ -717,12 +753,12 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          <Card className="block h-auto min-h-fit w-full overflow-visible rounded-2xl border-slate-200 p-4 shadow-sm transition-all duration-300 hover:shadow-md box-border">
+          <Card className="block h-auto min-h-fit w-full overflow-visible rounded-2xl border-slate-200 p-3 shadow-sm transition-all duration-300 hover:shadow-md box-border sm:p-4 md:p-5">
             <CardHeader className="p-0">
-              <CardTitle className="text-xl">
+              <CardTitle className="text-lg sm:text-xl">
                 Step 2 - AI Generated Content
               </CardTitle>
-              <CardDescription className="pr-2 text-[15px] leading-6">
+              <CardDescription className="pr-1 text-sm leading-6 sm:pr-2 sm:text-[15px]">
                 The output below comes from the backend job status and AI
                 response, not a local mock.
               </CardDescription>
@@ -731,20 +767,21 @@ export default function Home() {
               {isGenerating ? (
                 <AiThinkingLoader active mode={generationMode} />
               ) : (
-                <div className="rounded-2xl border bg-white p-3.5 animate-in fade-in duration-300">
+                <div className="min-h-[420px] rounded-2xl border bg-white p-3 animate-in fade-in duration-300 sm:min-h-[480px] sm:p-3.5">
                   <Textarea
+                    ref={postTextareaRef}
                     value={displayPostText}
                     onChange={(event) => setPostText(event.target.value)}
-                    className="min-h-48 resize-y rounded-xl border-0 bg-slate-50 px-4 py-3 text-[15px] leading-7 md:text-base"
+                    className="min-h-72 resize-none overflow-hidden rounded-xl border-0 bg-slate-50 px-4 py-3 text-sm leading-7 md:min-h-[340px] md:text-base"
                     placeholder="Generated GMB-ready post will appear here"
                   />
                 </div>
               )}
 
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                 <Button
                   variant="outline"
-                  className="rounded-xl px-4 text-[15px] transition-all duration-300 hover:-translate-y-0.5"
+                  className="w-full rounded-xl px-4 text-sm transition-all duration-300 hover:-translate-y-0.5 sm:w-auto sm:text-[15px]"
                   onClick={() => setShowRefinePanel((value) => !value)}
                   disabled={!activeJobId}
                 >
@@ -752,7 +789,7 @@ export default function Home() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="rounded-xl px-4 text-[15px] transition-all duration-300 hover:-translate-y-0.5"
+                  className="w-full rounded-xl px-4 text-sm transition-all duration-300 hover:-translate-y-0.5 sm:w-auto sm:text-[15px]"
                   onClick={handleCopy}
                   disabled={isGenerating || !displayPostText}
                 >
@@ -765,7 +802,7 @@ export default function Home() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="rounded-xl px-4 text-[15px] transition-all duration-300 hover:-translate-y-0.5"
+                  className="w-full rounded-xl px-4 text-sm transition-all duration-300 hover:-translate-y-0.5 sm:w-auto sm:text-[15px]"
                   onClick={handleCopyFullPackage}
                   disabled={isGenerating || !aiContent}
                 >
@@ -775,7 +812,7 @@ export default function Home() {
               </div>
 
               {showRefinePanel && (
-                <div className="space-y-3 rounded-3xl border bg-slate-50 p-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="space-y-3 rounded-3xl border bg-slate-50 p-3 animate-in fade-in slide-in-from-bottom-2 duration-300 sm:p-4">
                   <div className="space-y-3">
                     {REFINE_FIELDS.map((field) => (
                       <RefineFieldCard
@@ -796,7 +833,7 @@ export default function Home() {
                   </div>
 
                   {!!refineActivity.length && (
-                    <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                    <div className="rounded-3xl border border-slate-200 bg-white p-3 sm:p-4">
                       <p className="text-sm font-semibold text-slate-900">
                         Recent refine activity
                       </p>
@@ -804,7 +841,7 @@ export default function Home() {
                         {refineActivity.map((entry) => (
                           <div
                             key={`${entry.field}-${entry.createdAt}`}
-                            className="rounded-2xl bg-slate-50 px-4 py-3"
+                            className="rounded-2xl bg-slate-50 px-3 py-3 sm:px-4"
                           >
                             <div className="flex flex-wrap items-center gap-2">
                               <Badge
@@ -817,10 +854,10 @@ export default function Home() {
                                 {new Date(entry.createdAt).toLocaleString()}
                               </span>
                             </div>
-                            <p className="mt-2 text-sm text-slate-700">
+                            <p className="mt-2 text-sm leading-6 text-slate-700">
                               {entry.instruction}
                             </p>
-                            <p className="mt-2 rounded-xl bg-white px-3 py-2 text-sm text-slate-600 shadow-sm">
+                            <p className="mt-2 rounded-xl bg-white px-3 py-2 text-sm leading-6 text-slate-600 shadow-sm">
                               {entry.response}
                             </p>
                           </div>
@@ -833,10 +870,10 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          <Card className="block h-auto min-h-fit w-full overflow-visible rounded-2xl border-slate-200 p-4 shadow-sm transition-all duration-300 hover:shadow-md box-border">
+          <Card className="block h-auto min-h-fit w-full overflow-visible rounded-2xl border-slate-200 p-3 shadow-sm transition-all duration-300 hover:shadow-md box-border sm:p-4">
             <CardHeader className="p-0">
-              <CardTitle className="text-xl">Step 3 - Export & Copy</CardTitle>
-              <CardDescription className="pr-2 text-[15px] leading-6">
+              <CardTitle className="text-lg sm:text-xl">Step 3 - Export & Copy</CardTitle>
+              <CardDescription className="pr-1 text-sm leading-6 sm:pr-2 sm:text-[15px]">
                 Copy the post, export the full content pack, or download it for later.
               </CardDescription>
             </CardHeader>
@@ -846,7 +883,7 @@ export default function Home() {
                   render={
                     <Button
                       variant="outline"
-                      className="rounded-xl px-4 text-[15px]"
+                      className="w-full rounded-xl px-4 text-sm sm:w-auto sm:text-[15px]"
                     >
                       Export <ChevronDown className="ml-2 h-4 w-4" />
                     </Button>
@@ -870,25 +907,25 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          <Card className="h-auto min-h-fit w-full overflow-visible rounded-2xl border-slate-200 p-4 shadow-sm md:hidden box-border">
+          <Card className="h-auto min-h-fit w-full overflow-visible rounded-2xl border-slate-200 p-3 shadow-sm md:hidden box-border">
             <CardHeader className="flex-row items-center justify-between space-y-0 p-0">
               <div>
-                <CardTitle className="text-xl">History</CardTitle>
-                <CardDescription className="text-[15px]">
+                <CardTitle className="text-lg">History</CardTitle>
+                <CardDescription className="text-sm">
                   Past backend jobs
                 </CardDescription>
               </div>
               <Sheet>
                 <SheetTrigger
                   render={
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" className="rounded-xl">
                       <History className="mr-2 h-4 w-4" /> Open
                     </Button>
                   }
                 />
                 <SheetContent
                   side="bottom"
-                  className="max-h-[80vh] overflow-y-auto"
+                  className="max-h-[80vh] overflow-y-auto px-3 pb-4 sm:px-4"
                 >
                   <SheetHeader>
                     <SheetTitle>History</SheetTitle>
@@ -902,16 +939,19 @@ export default function Home() {
           </Card>
         </section>
 
-        <aside className="flex w-full flex-col gap-4 box-border md:col-span-2">
-          <Card className="relative z-0 h-auto min-h-fit w-full shrink-0 overflow-visible rounded-2xl border-slate-200 p-4 shadow-sm transition-all duration-300 hover:shadow-md box-border">
+        <aside
+          id="history"
+          className="flex w-full scroll-mt-24 flex-col gap-4 box-border md:col-span-2"
+        >
+          <Card className="relative z-0 h-auto min-h-fit w-full shrink-0 overflow-visible rounded-2xl border-slate-200 p-3 shadow-sm transition-all duration-300 hover:shadow-md box-border sm:p-4">
             <CardHeader className="p-0">
-              <CardTitle className="text-xl">Live Post Preview</CardTitle>
-              <CardDescription className="pr-2 text-[15px] leading-6">
+              <CardTitle className="text-lg sm:text-xl">Live Post Preview</CardTitle>
+              <CardDescription className="pr-1 text-sm leading-6 sm:pr-2 sm:text-[15px]">
                 How this appears on Google Business Profile
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="rounded-2xl border bg-white p-4">
+              <div className="rounded-2xl border bg-white p-3 sm:p-4">
                 {uploadedImage ? (
                   <Image
                     src={uploadedImage}
@@ -922,7 +962,7 @@ export default function Home() {
                     className={getPreviewImageClassName()}
                   />
                 ) : (
-                  <div className="grid h-40 place-items-center rounded-xl bg-slate-100 px-4 text-center text-[15px] text-slate-500">
+                  <div className="grid h-36 place-items-center rounded-xl bg-slate-100 px-4 text-center text-sm text-slate-500 sm:h-40 sm:text-[15px]">
                     Image preview
                   </div>
                 )}
@@ -939,8 +979,8 @@ export default function Home() {
 
                 {aiContent ? (
                   <div className="mt-4 space-y-4">
-                    <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                      <h3 className="text-lg font-semibold text-slate-900">
+                    <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
+                      <h3 className="text-base font-semibold text-slate-900 sm:text-lg">
                         {aiContent.title || 'AI generated content'}
                       </h3>
                       <p className="mt-3 text-sm leading-6 text-slate-600">
@@ -985,9 +1025,9 @@ export default function Home() {
                         <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
                           Google Business Profile Post
                         </p>
-                        <p className="mt-2 whitespace-pre-line text-sm leading-7 text-slate-700">
+                        <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 whitespace-pre-wrap text-slate-700">
                           {aiContent.gmbPost || 'No GMB post returned by the AI service.'}
-                        </p>
+                        </div>
                       </div>
 
                       <div className="grid gap-3 md:grid-cols-1">
@@ -1003,7 +1043,7 @@ export default function Home() {
                     </div>
                   </div>
                 ) : (
-                  <p className="mt-4 pr-1 text-[15px] leading-7 text-slate-700 md:text-base">
+                  <p className="mt-4 pr-1 text-sm leading-7 text-slate-700 md:text-base">
                     Your generated GBP post will show here after the backend job finishes.
                   </p>
                 )}
@@ -1013,10 +1053,10 @@ export default function Home() {
 
           <Card className="relative z-0 hidden h-auto min-h-fit w-full shrink-0 overflow-visible rounded-2xl border-slate-200 p-4 shadow-sm box-border md:block">
             <CardHeader className="p-0">
-              <CardTitle className="flex items-center gap-2 text-xl">
+              <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
                 <MessageSquare className="h-5 w-5" /> History
               </CardTitle>
-              <CardDescription className="pr-2 text-[15px] leading-6">
+              <CardDescription className="pr-1 text-sm leading-6 sm:pr-2 sm:text-[15px]">
                 Grouped by recent backend jobs
               </CardDescription>
             </CardHeader>
