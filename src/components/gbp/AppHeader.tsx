@@ -1,8 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { History, Menu, Plus, Sparkles } from 'lucide-react'
+import * as React from 'react'
 
 import {
   Sheet,
@@ -22,6 +23,12 @@ const links = [
 
 export function AppHeader() {
   const pathname = usePathname()
+  const router = useRouter()
+
+  const handleNewPost = React.useCallback(() => {
+    const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    router.push(`/?newPost=${token}`)
+  }, [router])
 
   return (
     <header className="sticky top-0 z-20 border-b bg-white/90 backdrop-blur transition-all duration-300">
@@ -54,13 +61,12 @@ export function AppHeader() {
         </div>
         <div className="flex items-center gap-2">
           <Button
-            asChild
+            type="button"
             className="hidden h-9 rounded-xl bg-[#4285F4] px-3 text-sm whitespace-nowrap hover:bg-[#3777dd] sm:inline-flex sm:px-4"
+            onClick={handleNewPost}
           >
-            <Link href="/" className="inline-flex items-center">
-              <Plus className="h-4 w-4 sm:mr-2" />
-              <span className="sr-only sm:not-sr-only">New Post</span>
-            </Link>
+            <Plus className="h-4 w-4 sm:mr-2" />
+            <span className="sr-only sm:not-sr-only">New Post</span>
           </Button>
 
           <Sheet>
@@ -82,11 +88,14 @@ export function AppHeader() {
               </SheetHeader>
 
               <div className="mt-6 space-y-3">
-                <Button asChild variant="outline" className="w-full justify-start rounded-xl">
-                  <Link href="/">
-                    <Plus className="mr-2 h-4 w-4" />
-                    New Post
-                  </Link>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-start rounded-xl"
+                  onClick={handleNewPost}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  New Post
                 </Button>
 
                 <div className="space-y-1">

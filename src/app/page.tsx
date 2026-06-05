@@ -1,9 +1,10 @@
 'use client'
 
+export const dynamic = 'force-dynamic'
+
 import * as React from 'react'
 import {
   Check,
-  ChevronDown,
   Copy,
   History,
   ImagePlus,
@@ -14,6 +15,7 @@ import {
   Wand2,
 } from 'lucide-react'
 import Image from 'next/image'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
@@ -34,12 +36,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -65,6 +61,7 @@ import {
   getDuplicateJobId,
   getJob,
   getJobsHistory,
+  getPreferredJobImageUrl,
   parseAiGeneratedContent,
   deleteJob,
   refineJob,
@@ -108,6 +105,7 @@ const REFINE_FIELDS = [
     label: 'Location',
     description: 'Set the location field used by the AI output.',
     placeholder: 'Add the city, area, or target location.',
+    hidden: true,
   },
   {
     key: 'gmb_post',
@@ -123,10 +121,12 @@ const REFINE_FIELDS = [
   },
 ] as const
 
-const initialFieldInputs = REFINE_FIELDS.reduce((accumulator, field) => {
-  accumulator[field.key] = ''
-  return accumulator
-}, {} as Record<RefineFieldKey, string>)
+function createInitialFieldInputs() {
+  return REFINE_FIELDS.reduce((accumulator, field) => {
+    accumulator[field.key] = ''
+    return accumulator
+  }, {} as Record<RefineFieldKey, string>)
+}
 
 function getHistoryStatus(jobStatus: JobStatus): HistoryStatus {
   return jobStatus === 'DONE' ? 'Published' : 'Draft'
@@ -166,6 +166,18 @@ function getRefineFieldValue(
     default:
       return ''
   }
+}
+
+function getDownloadFilename(fileName: string, updatedImageUrl?: string | null) {
+  const trimmedName = fileName.trim() || 'gbp-image.jpg'
+  const hasExtension = /\.[^.]+$/.test(trimmedName)
+  const prefix = updatedImageUrl ? 'updated-' : ''
+
+  if (hasExtension) {
+    return `${prefix}${trimmedName}`
+  }
+
+  return `${prefix}${trimmedName}.jpg`
 }
 
 function getPreviewImageClassName() {
@@ -228,8 +240,10 @@ function RefineFieldCard({
   )
 }
 
-export default function Home() {
+function HomeContent() {
   const queryClient = useQueryClient()
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const postTextareaRef = React.useRef<HTMLTextAreaElement | null>(null)
   const [uploadedImage, setUploadedImage] = React.useState<string | null>(null)
   const [selectedFile, setSelectedFile] = React.useState<File | null>(null)
@@ -243,7 +257,7 @@ export default function Home() {
   const [extraDetails, setExtraDetails] = React.useState('')
   const [showRefinePanel, setShowRefinePanel] = React.useState(false)
   const [fieldInputs, setFieldInputs] =
-    React.useState<Record<RefineFieldKey, string>>(initialFieldInputs)
+    React.useState<Record<RefineFieldKey, string>>(() => createInitialFieldInputs())
   const [activeFieldKey, setActiveFieldKey] =
     React.useState<RefineFieldKey | null>(null)
   const [refineActivity, setRefineActivity] = React.useState<
@@ -388,7 +402,7 @@ export default function Home() {
     if (!job) return
 
     setCurrentStatus(job.status)
-    setUploadedImage(job.originalCloudinaryUrl)
+    setUploadedImage(getPreferredJobImageUrl(job))
 
     if (job.status === 'DONE') {
       const parsed = parseAiGeneratedContent(job.aiRawResponse)
@@ -413,6 +427,73 @@ export default function Home() {
 
     toast.error(getApiErrorMessage(historyQuery.error))
   }, [historyQuery.error, historyQuery.isError])
+
+  const handleOpenHistoryJob = React.useCallback(
+    (item: JobHistoryItem) => {
+      setActiveJobId(item._id)
+      setSelectedFile(null)
+      setUploadedImage(getPreferredJobImageUrl(item))
+      setCurrentStatus(item.status)
+      setGenerationMode('upload')
+      setShowRefinePanel(false)
+      void queryClient.refetchQueries({ queryKey: ['job', item._id], exact: true })
+    },
+    [queryClient],
+  )
+
+  const resetComposerState = React.useCallback(() => {
+    setUploadedImage(null)
+    setSelectedFile(null)
+    setActiveJobId(null)
+    setCurrentStatus(null)
+    setGenerationMode('upload')
+    setPostText('')
+    setAiContent(null)
+    setExtraDetailsOpen(false)
+    setExtraDetails('')
+    setShowRefinePanel(false)
+    setFieldInputs(createInitialFieldInputs())
+    setActiveFieldKey(null)
+    setRefineActivity([])
+    setCopied(false)
+    setDeleteDialogJobId(null)
+  }, [])
+
+  React.useEffect(() => {
+    const newPostToken = searchParams.get('newPost')
+    if (newPostToken) {
+      resetComposerState()
+      router.replace('/')
+      return
+    }
+
+    const historyJobId = searchParams.get('historyJobId')
+    if (!historyJobId || historyJobId === activeJobId) return
+
+    const historyJob = historyQuery.data?.jobs.find(
+      (item) => item._id === historyJobId,
+    )
+    if (historyJob) {
+      handleOpenHistoryJob(historyJob)
+      return
+    }
+
+    setActiveJobId(historyJobId)
+    setSelectedFile(null)
+    setUploadedImage(null)
+    setCurrentStatus(null)
+    setPostText('')
+    setAiContent(null)
+    setRefineActivity([])
+    setShowRefinePanel(false)
+  }, [
+    activeJobId,
+    handleOpenHistoryJob,
+    historyQuery.data?.jobs,
+    resetComposerState,
+    router,
+    searchParams,
+  ])
 
   const handleUpload = (file?: File) => {
     if (!file) return
@@ -457,37 +538,32 @@ export default function Home() {
     setTimeout(() => setCopied(false), 1100)
   }
 
-  const handleDownload = (format: 'txt' | 'json') => {
-    if (!aiContent) return
+  const handleDownloadImage = async () => {
+    if (!preferredImageUrl) {
+      toast.error('No image available to download.')
+      return
+    }
 
-    const payload =
-      format === 'json'
-        ? JSON.stringify(aiContent, null, 2)
-        : formatAiContentForCopy(aiContent)
+    const downloadName = getDownloadFilename(
+      activeJob?.originalFilename || selectedFile?.name || 'gbp-image.jpg',
+      activeJob?.updatedImageUrl,
+    )
 
-    const blob = new Blob([payload], {
-      type: format === 'json' ? 'application/json' : 'text/plain',
-    })
-    const url = URL.createObjectURL(blob)
+    const downloadUrl = new URL('/api/download-image', window.location.origin)
+    downloadUrl.searchParams.set('url', preferredImageUrl)
+    downloadUrl.searchParams.set('name', downloadName)
+
     const link = document.createElement('a')
-    link.href = url
-    link.download = `gbp-ai-response.${format}`
+    link.href = downloadUrl.toString()
+    link.download = downloadName
+    link.rel = 'noreferrer'
+    document.body.appendChild(link)
     link.click()
-    URL.revokeObjectURL(url)
+    link.remove()
   }
 
   const handleDeleteHistoryItem = (jobId: string) => {
     setDeleteDialogJobId(jobId)
-  }
-
-  const handleOpenHistoryJob = (item: JobHistoryItem) => {
-    setActiveJobId(item._id)
-    setSelectedFile(null)
-    setUploadedImage(item.originalCloudinaryUrl)
-    setCurrentStatus(item.status)
-    setGenerationMode('upload')
-    setShowRefinePanel(false)
-    void queryClient.refetchQueries({ queryKey: ['job', item._id], exact: true })
   }
 
   const confirmDeleteHistoryItem = () => {
@@ -525,17 +601,23 @@ export default function Home() {
   }
 
   const historyItems = historyQuery.data?.jobs ?? []
-  const isGenerating =
+  const isBusy =
     uploadMutation.isPending ||
     refineMutation.isPending ||
     jobQuery.isFetching ||
     currentStatus === 'PENDING' ||
     currentStatus === 'PROCESSING'
+  const shouldShowThinkingLoader =
+    uploadMutation.isPending ||
+    (!aiContent && (currentStatus === 'PENDING' || currentStatus === 'PROCESSING'))
+  const isRefining = refineMutation.isPending
   const activeJob = jobQuery.data
   const displayPostText = postText || aiContent?.gmbPost || ''
   const shouldShowReadyState =
     Boolean(activeJobId) && currentStatus === 'DONE' && Boolean(aiContent)
   const deleteTargetJob = historyItems.find((item) => item._id === deleteDialogJobId)
+  const preferredImageUrl =
+    getPreferredJobImageUrl(activeJob) || uploadedImage || ''
 
   React.useEffect(() => {
     const textarea = postTextareaRef.current
@@ -584,7 +666,7 @@ export default function Home() {
                 onClick={() => handleOpenHistoryJob(item)}
               >
                 <Image
-                  src={item.originalCloudinaryUrl}
+                  src={getPreferredJobImageUrl(item)}
                   alt={item.originalFilename}
                   width={56}
                   height={56}
@@ -678,13 +760,13 @@ export default function Home() {
                 </div>
               </label>
 
-              {uploadedImage && (
+              {preferredImageUrl && (
                 <div className="rounded-2xl border bg-white p-3 transition-all duration-300 animate-in fade-in sm:p-4">
                   <p className="mb-2 text-sm font-medium uppercase tracking-wide text-slate-500">
                     Uploaded Preview
                   </p>
                   <Image
-                    src={uploadedImage}
+                    src={preferredImageUrl}
                     alt="uploaded"
                     width={1200}
                     height={800}
@@ -737,7 +819,7 @@ export default function Home() {
                         value={extraDetails}
                         onChange={(event) => setExtraDetails(event.target.value)}
                         placeholder="Mention your weekend discount or focus on eco-friendly packaging"
-                        disabled={isGenerating}
+                        disabled={isBusy}
                       />
                     </AccordionContent>
                   </AccordionItem>
@@ -764,15 +846,19 @@ export default function Home() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 p-0">
-              {isGenerating ? (
+              {isRefining && aiContent ? (
+                <AiThinkingLoader active mode="refine" className="mb-4" />
+              ) : null}
+
+              {shouldShowThinkingLoader ? (
                 <AiThinkingLoader active mode={generationMode} />
               ) : (
-                <div className="min-h-[420px] rounded-2xl border bg-white p-3 animate-in fade-in duration-300 sm:min-h-[480px] sm:p-3.5">
+                <div className="rounded-2xl border bg-white p-3 animate-in fade-in duration-300 sm:p-3.5">
                   <Textarea
                     ref={postTextareaRef}
                     value={displayPostText}
                     onChange={(event) => setPostText(event.target.value)}
-                    className="min-h-72 resize-none overflow-hidden rounded-xl border-0 bg-slate-50 px-4 py-3 text-sm leading-7 md:min-h-[340px] md:text-base"
+                    className="min-h-0 resize-none overflow-hidden rounded-xl border-0 bg-slate-50 px-4 py-3 text-sm leading-7 md:text-base"
                     placeholder="Generated GMB-ready post will appear here"
                   />
                 </div>
@@ -783,7 +869,7 @@ export default function Home() {
                   variant="outline"
                   className="w-full rounded-xl px-4 text-sm transition-all duration-300 hover:-translate-y-0.5 sm:w-auto sm:text-[15px]"
                   onClick={() => setShowRefinePanel((value) => !value)}
-                  disabled={!activeJobId}
+                  disabled={!activeJobId || isBusy}
                 >
                   <Wand2 className="mr-2 h-4 w-4" /> Refine
                 </Button>
@@ -791,7 +877,7 @@ export default function Home() {
                   variant="outline"
                   className="w-full rounded-xl px-4 text-sm transition-all duration-300 hover:-translate-y-0.5 sm:w-auto sm:text-[15px]"
                   onClick={handleCopy}
-                  disabled={isGenerating || !displayPostText}
+                  disabled={isBusy || !displayPostText}
                 >
                   {copied ? (
                     <Check className="mr-2 h-4 w-4 text-emerald-600" />
@@ -804,7 +890,7 @@ export default function Home() {
                   variant="outline"
                   className="w-full rounded-xl px-4 text-sm transition-all duration-300 hover:-translate-y-0.5 sm:w-auto sm:text-[15px]"
                   onClick={handleCopyFullPackage}
-                  disabled={isGenerating || !aiContent}
+                  disabled={isBusy || !aiContent}
                 >
                   <Copy className="mr-2 h-4 w-4" />
                   Copy Full Pack
@@ -814,7 +900,7 @@ export default function Home() {
               {showRefinePanel && (
                 <div className="space-y-3 rounded-3xl border bg-slate-50 p-3 animate-in fade-in slide-in-from-bottom-2 duration-300 sm:p-4">
                   <div className="space-y-3">
-                    {REFINE_FIELDS.map((field) => (
+                    {REFINE_FIELDS.filter((field) => !('hidden' in field && field.hidden)).map((field) => (
                       <RefineFieldCard
                         key={field.key}
                         field={field}
@@ -877,33 +963,37 @@ export default function Home() {
                 Copy the post, export the full content pack, or download it for later.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4 p-0">
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <Button
-                      variant="outline"
-                      className="w-full rounded-xl px-4 text-sm sm:w-auto sm:text-[15px]"
-                    >
-                      Export <ChevronDown className="ml-2 h-4 w-4" />
-                    </Button>
-                  }
-                />
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem onClick={handleCopyGmbPost}>
-                    Copy Post
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleCopyFullPackage}>
-                    Copy Full Pack
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleDownload('txt')}>
-                    Download as .txt
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleDownload('json')}>
-                    Download as JSON
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+            <CardContent className="space-y-3 p-0">
+              <div className="grid gap-2 sm:grid-cols-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 rounded-xl px-4 text-sm sm:text-[15px]"
+                  onClick={handleCopyGmbPost}
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copy Post
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 rounded-xl px-4 text-sm sm:text-[15px]"
+                  onClick={handleCopyFullPackage}
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copy Full Pack
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 rounded-xl px-4 text-sm sm:text-[15px]"
+                  onClick={handleDownloadImage}
+                  disabled={!preferredImageUrl}
+                >
+                  <ImagePlus className="mr-2 h-4 w-4" />
+                  Download Image
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
@@ -952,9 +1042,9 @@ export default function Home() {
             </CardHeader>
             <CardContent className="p-0">
               <div className="rounded-2xl border bg-white p-3 sm:p-4">
-                {uploadedImage ? (
+                {preferredImageUrl ? (
                   <Image
-                    src={uploadedImage}
+                    src={preferredImageUrl}
                     alt="preview"
                     width={1200}
                     height={800}
@@ -1108,5 +1198,13 @@ export default function Home() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+export default function Home() {
+  return (
+    <React.Suspense fallback={null}>
+      <HomeContent />
+    </React.Suspense>
   )
 }
