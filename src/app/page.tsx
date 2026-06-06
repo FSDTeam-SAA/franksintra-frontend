@@ -24,19 +24,12 @@ import { AiThinkingLoader } from '@/components/gbp/AiThinkingLoader'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion'
-import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Sheet,
@@ -253,8 +246,6 @@ function HomeContent() {
     React.useState<GenerationMode>('upload')
   const [postText, setPostText] = React.useState('')
   const [aiContent, setAiContent] = React.useState<ParsedAiContent | null>(null)
-  const [extraDetailsOpen, setExtraDetailsOpen] = React.useState(false)
-  const [extraDetails, setExtraDetails] = React.useState('')
   const [showRefinePanel, setShowRefinePanel] = React.useState(false)
   const [fieldInputs, setFieldInputs] =
     React.useState<Record<RefineFieldKey, string>>(() => createInitialFieldInputs())
@@ -449,8 +440,6 @@ function HomeContent() {
     setGenerationMode('upload')
     setPostText('')
     setAiContent(null)
-    setExtraDetailsOpen(false)
-    setExtraDetails('')
     setShowRefinePanel(false)
     setFieldInputs(createInitialFieldInputs())
     setActiveFieldKey(null)
@@ -801,30 +790,6 @@ function HomeContent() {
                   </Button>
                 </div>
               </div>
-
-              <Card className="rounded-2xl border bg-white p-0">
-                <Accordion
-                  value={extraDetailsOpen ? ['details'] : []}
-                  className="w-full"
-                >
-                  <AccordionItem value="details" className="border-0 px-4">
-                    <AccordionTrigger
-                      onClick={() => setExtraDetailsOpen((value) => !value)}
-                      className="py-4 text-sm font-medium hover:no-underline sm:text-base"
-                    >
-                      Add extra details (optional)
-                    </AccordionTrigger>
-                    <AccordionContent className="border-t pt-4 animate-in fade-in slide-in-from-top-1 duration-300">
-                      <Input
-                        value={extraDetails}
-                        onChange={(event) => setExtraDetails(event.target.value)}
-                        placeholder="Mention your weekend discount or focus on eco-friendly packaging"
-                        disabled={isBusy}
-                      />
-                    </AccordionContent>
-                  </AccordionItem>
-                </Accordion>
-              </Card>
 
               {shouldShowReadyState && (
                 <Card className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 sm:text-[15px]">
