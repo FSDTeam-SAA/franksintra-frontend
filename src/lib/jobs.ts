@@ -8,6 +8,7 @@ export type JobHistoryItem = {
   _id: string;
   originalFilename: string;
   originalCloudinaryUrl: string;
+  updatedImageUrl?: string | null;
   status: JobStatus;
   aiSessionId?: string | null;
   createdAt: string;
@@ -17,6 +18,7 @@ export type JobHistoryItem = {
 export type JobRecord = JobHistoryItem & {
   imageHash?: string;
   aiRawResponse?: string | null;
+  updatedMetadata?: Record<string, unknown> | null;
   failureReason?: string | null;
   chatHistory?: Array<{
     role: "user" | "assistant";
@@ -64,6 +66,12 @@ export type ParsedAiContent = {
   gmbPost: string;
   rawResponse: string;
 };
+
+export function getPreferredJobImageUrl(
+  job: Pick<JobHistoryItem, "originalCloudinaryUrl" | "updatedImageUrl"> | null | undefined,
+) {
+  return job?.updatedImageUrl || job?.originalCloudinaryUrl || "";
+}
 
 type ApiEnvelope<T> = {
   data: T;
