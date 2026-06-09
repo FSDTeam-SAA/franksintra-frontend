@@ -89,7 +89,7 @@ export default function HistoryPage() {
 
   const jobs = historyQuery.data?.jobs ?? []
   const paginationInfo = historyQuery.data?.paginationInfo
-  const totalPages = paginationInfo?.totalPages ?? 1
+  const totalPages = Math.max(1, paginationInfo?.totalPages ?? 1)
 
   React.useEffect(() => {
     if (page > totalPages) {
