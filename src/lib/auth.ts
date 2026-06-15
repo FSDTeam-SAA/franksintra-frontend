@@ -16,6 +16,7 @@ export type AuthUserProfile = {
   gender?: 'male' | 'female' | 'other'
   bio?: string
   language?: string
+  companyName?: string
   address?: {
     country?: string
     cityState?: string
@@ -34,6 +35,7 @@ export type UpdateUserProfilePayload = {
   gender?: 'male' | 'female' | 'other'
   bio?: string
   language?: string
+  companyName?: string
   country?: string
   cityState?: string
   roadArea?: string
