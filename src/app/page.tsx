@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 
 import * as React from 'react'
 import {
+  Building2,
   Check,
   Copy,
   History,
@@ -53,6 +54,7 @@ import {
   formatAiContentForCopy,
   getDuplicateJobId,
   getJob,
+  getJobDisplayName,
   getJobsHistory,
   getPreferredJobImageUrl,
   parseAiGeneratedContent,
@@ -129,7 +131,8 @@ function getHistoryStatus(jobStatus: JobStatus): HistoryStatus {
 }
 
 function getHistoricalPreviewText(job: JobHistoryItem) {
-  return job.originalFilename.replace(/\.[^.]+$/, '')
+  const name = getJobDisplayName(job)
+  return name.replace(/\.[^.]+$/, '')
 }
 
 function getRefineFieldLabel(fieldKey: RefineFieldKey) {
@@ -268,6 +271,7 @@ function HomeContent() {
   >([])
   const [assignLocation, setAssignLocation] = React.useState('')
   const [preferredInstructions, setPreferredInstructions] = React.useState('')
+  const [companyName, setCompanyName] = React.useState('')
   const [copied, setCopied] = React.useState(false)
   const [deleteDialogJobId, setDeleteDialogJobId] = React.useState<
     string | null
@@ -302,11 +306,13 @@ function HomeContent() {
       file,
       location,
       instructions,
+      companyName,
     }: {
       file: File
       location?: string
       instructions?: string
-    }) => uploadJob(file, location, instructions),
+      companyName?: string
+    }) => uploadJob(file, location, instructions, companyName),
     onMutate: async () => {
       setGenerationMode('upload')
       setCurrentStatus('PENDING')
@@ -541,6 +547,7 @@ function HomeContent() {
       file: selectedFile,
       location: assignLocation.trim() || undefined,
       instructions: preferredInstructions.trim() || undefined,
+      companyName: companyName.trim() || undefined,
     })
   }
 
@@ -572,7 +579,7 @@ function HomeContent() {
     }
 
     const downloadName = getDownloadFilename(
-      activeJob?.originalFilename || selectedFile?.name || 'gbp-image.jpg',
+      getJobDisplayName(activeJob) || selectedFile?.name || 'gbp-image.jpg',
       activeJob?.updatedImageUrl,
     )
 
@@ -732,7 +739,7 @@ function HomeContent() {
                 className="self-end shrink-0 text-slate-400 hover:bg-red-50 hover:text-red-600 sm:self-auto"
                 onClick={() => handleDeleteHistoryItem(item._id)}
                 disabled={deleteMutation.isPending}
-                aria-label={`Delete ${item.originalFilename}`}
+                aria-label={`Delete ${getJobDisplayName(item)}`}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -1068,9 +1075,9 @@ function HomeContent() {
                   >
                     {currentStatus ?? 'No job'}
                   </Badge>
-                  {activeJob?.originalFilename ? (
+                  {getJobDisplayName(activeJob) ? (
                     <span className="text-sm text-slate-500">
-                      {activeJob.originalFilename}
+                      {getJobDisplayName(activeJob)}
                     </span>
                   ) : null}
                 </div>
@@ -1192,6 +1199,30 @@ function HomeContent() {
           <div className="space-y-5 py-2">
             <div className="space-y-2">
               <Label
+                htmlFor="modal-company"
+                className="flex items-center gap-1 text-sm font-semibold text-slate-800"
+              >
+                <Building2 className="h-4 w-4 text-slate-500" />
+                Company Name
+                <span className="text-xs font-normal text-slate-400">
+                  (optional)
+                </span>
+              </Label>
+              <input
+                id="modal-company"
+                type="text"
+                value={companyName}
+                onChange={e => setCompanyName(e.target.value)}
+                placeholder="e.g. Frank's HVAC"
+                className="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm outline-none transition-colors focus:border-[#4285F4] focus:ring-1 focus:ring-[#4285F4]"
+              />
+              <p className="text-xs text-slate-500">
+                Optional. Tell the AI which business this content is for.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label
                 htmlFor="modal-location"
                 className="flex items-center gap-1 text-sm font-semibold text-slate-800"
               >
@@ -1249,7 +1280,7 @@ function HomeContent() {
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="gap-3 sm:gap-3 ">
             <Button
               type="button"
               variant="outline"
@@ -1296,7 +1327,7 @@ function HomeContent() {
             <DialogTitle>Delete history item?</DialogTitle>
             <DialogDescription>
               {deleteTargetJob
-                ? `This will remove ${deleteTargetJob.originalFilename}, the Cloudinary image, and the AI session.`
+                ? `This will remove ${getJobDisplayName(deleteTargetJob)}, the Cloudinary image, and the AI session.`
                 : 'This will remove the job, Cloudinary image, and AI session.'}
             </DialogDescription>
           </DialogHeader>

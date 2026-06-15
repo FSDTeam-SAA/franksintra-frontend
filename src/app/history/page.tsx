@@ -37,6 +37,7 @@ import { cn } from '@/lib/utils'
 import {
   deleteJob,
   getApiErrorMessage,
+  getJobDisplayName,
   getJobsHistory,
   getPreferredJobImageUrl,
   type JobHistoryItem,
@@ -82,7 +83,7 @@ export default function HistoryPage() {
       setDeleteTarget(null)
       await queryClient.invalidateQueries({ queryKey: ['jobs-history'] })
     },
-    onError: (error) => {
+    onError: error => {
       toast.error(getApiErrorMessage(error))
     },
   })
@@ -114,7 +115,7 @@ export default function HistoryPage() {
     visiblePages.add(Math.min(totalPages, page + 1))
 
     const orderedPages = Array.from(visiblePages)
-      .filter((value) => value >= 1 && value <= totalPages)
+      .filter(value => value >= 1 && value <= totalPages)
       .sort((left, right) => left - right)
 
     const items: React.ReactNode[] = []
@@ -135,7 +136,7 @@ export default function HistoryPage() {
             href="#"
             size="default"
             isActive={value === page}
-            onClick={(event) => {
+            onClick={event => {
               event.preventDefault()
               setPage(value)
             }}
@@ -152,9 +153,9 @@ export default function HistoryPage() {
           <PaginationItem>
             <PaginationPrevious
               href="#"
-              onClick={(event) => {
+              onClick={event => {
                 event.preventDefault()
-                setPage((current) => Math.max(1, current - 1))
+                setPage(current => Math.max(1, current - 1))
               }}
               className={cn(page <= 1 && 'pointer-events-none opacity-50')}
             />
@@ -163,11 +164,13 @@ export default function HistoryPage() {
           <PaginationItem>
             <PaginationNext
               href="#"
-              onClick={(event) => {
+              onClick={event => {
                 event.preventDefault()
-                setPage((current) => Math.min(totalPages, current + 1))
+                setPage(current => Math.min(totalPages, current + 1))
               }}
-              className={cn(page >= totalPages && 'pointer-events-none opacity-50')}
+              className={cn(
+                page >= totalPages && 'pointer-events-none opacity-50',
+              )}
             />
           </PaginationItem>
         </PaginationContent>
@@ -200,7 +203,7 @@ export default function HistoryPage() {
                 Failed to load job history.
               </div>
             ) : jobs.length ? (
-              jobs.map((job) => (
+              jobs.map(job => (
                 <div
                   key={job._id}
                   className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md sm:flex-row sm:items-center sm:p-4"
@@ -209,7 +212,7 @@ export default function HistoryPage() {
                     type="button"
                     onClick={() => router.push(`/?historyJobId=${job._id}`)}
                     className="group relative h-24 w-full shrink-0 overflow-hidden rounded-2xl border bg-slate-100 sm:h-20 sm:w-20"
-                    aria-label={`Open ${job.originalFilename} in home`}
+                    aria-label={`Open ${getJobDisplayName(job)} in home`}
                   >
                     <Image
                       src={getPreferredJobImageUrl(job)}
@@ -224,7 +227,7 @@ export default function HistoryPage() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="truncate text-[15px] font-semibold text-slate-900 sm:text-base">
-                          {job.originalFilename}
+                          {getJobDisplayName(job)}
                         </p>
                         <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-500">
                           <span>{formatJobDate(job.createdAt)}</span>
@@ -267,7 +270,8 @@ export default function HistoryPage() {
                       onClick={() => setDeleteTarget(job)}
                       disabled={deleteMutation.isPending}
                     >
-                      {deleteMutation.isPending && deleteTarget?._id === job._id ? (
+                      {deleteMutation.isPending &&
+                      deleteTarget?._id === job._id ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       ) : (
                         <Trash2 className="mr-2 h-4 w-4" />
@@ -290,7 +294,7 @@ export default function HistoryPage() {
 
       <Dialog
         open={Boolean(deleteTarget)}
-        onOpenChange={(open) => {
+        onOpenChange={open => {
           if (!open) setDeleteTarget(null)
         }}
       >
@@ -299,7 +303,7 @@ export default function HistoryPage() {
             <DialogTitle>Delete history item?</DialogTitle>
             <DialogDescription>
               {deleteTarget
-                ? `This will remove ${deleteTarget.originalFilename} and its backend record.`
+                ? `This will remove ${getJobDisplayName(deleteTarget)} and its backend record.`
                 : 'This will remove the selected job.'}
             </DialogDescription>
           </DialogHeader>

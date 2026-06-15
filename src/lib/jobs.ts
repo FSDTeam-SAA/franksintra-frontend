@@ -13,6 +13,14 @@ export type JobHistoryItem = {
   aiSessionId?: string | null
   createdAt: string
   updatedAt: string
+  updatedMetadata?: {
+    file_name: string
+    title: string
+    caption: string
+    description: string
+    SEO_keywords: string[]
+    assign_location: string
+  } | null
 }
 
 export type JobRecord = JobHistoryItem & {
@@ -76,6 +84,18 @@ export function getPreferredJobImageUrl(
     | undefined,
 ) {
   return job?.updatedImageUrl || job?.originalCloudinaryUrl || ''
+}
+
+/** Prefer AI-generated filename, fallback to original uploaded filename */
+export function getJobDisplayName(
+  job:
+    | Pick<JobHistoryItem, 'originalFilename' | 'updatedMetadata'>
+    | null
+    | undefined,
+): string {
+  if (!job) return ''
+  const aiName = job.updatedMetadata?.file_name?.trim()
+  return aiName || job.originalFilename
 }
 
 type ApiEnvelope<T> = {
@@ -306,12 +326,14 @@ export async function uploadJob(
   image: File,
   assignLocation?: string,
   preferredInstructions?: string,
+  companyName?: string,
 ): Promise<UploadJobResponse> {
   const formData = new FormData()
   formData.append('image', image)
   if (assignLocation) formData.append('assign_location', assignLocation)
   if (preferredInstructions)
     formData.append('preferred_instructions', preferredInstructions)
+  if (companyName) formData.append('company_name', companyName)
 
   const response = await axiosInstance.post<ApiEnvelope<UploadJobResponse>>(
     '/jobs/upload',
