@@ -771,47 +771,53 @@ function HomeContent() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 p-0">
-              <label className="group block cursor-pointer rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-5 transition-all duration-300 hover:border-[#4285F4] hover:bg-blue-50/40 sm:p-7">
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={event => handleUpload(event.target.files?.[0])}
-                />
-                <div className="flex flex-col items-center gap-3 text-center">
-                  <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-slate-500 shadow-sm transition group-hover:scale-105">
-                    {uploadMutation.isPending ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    ) : (
-                      <ImagePlus className="h-5 w-5" />
-                    )}
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="group flex cursor-pointer rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-5 transition-all duration-300 hover:border-[#4285F4] hover:bg-blue-50/40 sm:p-7">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={event => handleUpload(event.target.files?.[0])}
+                  />
+                  <div className="flex flex-col items-center justify-center gap-3 text-center min-h-[200px] w-full">
+                    <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-slate-500 shadow-sm transition group-hover:scale-105">
+                      {uploadMutation.isPending ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : (
+                        <ImagePlus className="h-5 w-5" />
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold sm:text-base">
+                        Drag and drop image here
+                      </p>
+                      <p className="text-sm text-slate-500 sm:text-[15px]">
+                        or click to browse from your device
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-semibold sm:text-base">
-                      Drag and drop image here
-                    </p>
-                    <p className="text-sm text-slate-500 sm:text-[15px]">
-                      or click to browse from your device
-                    </p>
-                  </div>
-                </div>
-              </label>
+                </label>
 
-              {preferredImageUrl && (
-                <div className="rounded-2xl border bg-white p-3 transition-all duration-300 animate-in fade-in sm:p-4">
+                <div className="rounded-2xl border bg-white p-3 transition-all duration-300 sm:p-4">
                   <p className="mb-2 text-sm font-medium uppercase tracking-wide text-slate-500">
                     Uploaded Preview
                   </p>
-                  <Image
-                    src={preferredImageUrl}
-                    alt="uploaded"
-                    width={1200}
-                    height={800}
-                    unoptimized
-                    className={getPreviewImageClassName()}
-                  />
+                  {preferredImageUrl ? (
+                    <Image
+                      src={preferredImageUrl}
+                      alt="uploaded"
+                      width={1200}
+                      height={800}
+                      unoptimized
+                      className={getPreviewImageClassName()}
+                    />
+                  ) : (
+                    <div className="grid h-[260px] w-full place-items-center rounded-2xl bg-slate-50 px-4 text-center text-sm text-slate-500">
+                      No image uploaded yet
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
 
               <Button
                 type="button"
@@ -841,11 +847,11 @@ function HomeContent() {
           <Card className="block h-auto min-h-fit w-full overflow-visible rounded-2xl border-slate-200 p-3 shadow-sm transition-all duration-300 hover:shadow-md box-border sm:p-4 md:p-5">
             <CardHeader className="p-0">
               <CardTitle className="text-lg sm:text-xl">
-                Step 2 - AI Generated Content
+                Step 2 - GMB Post Content
               </CardTitle>
               <CardDescription className="pr-1 text-sm leading-6 sm:pr-2 sm:text-[15px]">
-                The output below comes from the backend job status and AI
-                response, not a local mock.
+                Review and refine the GMB-ready post generated by AI for your
+                business profile.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 p-0">
@@ -1054,21 +1060,7 @@ function HomeContent() {
             </CardHeader>
             <CardContent className="p-0">
               <div className="rounded-2xl border bg-white p-3 sm:p-4">
-                {preferredImageUrl ? (
-                  <Image
-                    src={preferredImageUrl}
-                    alt="preview"
-                    width={1200}
-                    height={800}
-                    unoptimized
-                    className={getPreviewImageClassName()}
-                  />
-                ) : (
-                  <div className="grid h-36 place-items-center rounded-xl bg-slate-100 px-4 text-center text-sm text-slate-500 sm:h-40 sm:text-[15px]">
-                    Image preview
-                  </div>
-                )}
-                <div className="mt-4 flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Badge
                     variant="secondary"
                     className="rounded-full px-2.5 py-0.5"
@@ -1086,7 +1078,7 @@ function HomeContent() {
                   <div className="mt-4 space-y-4">
                     <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
                       <h3 className="text-base font-semibold text-slate-900 sm:text-lg">
-                        {aiContent.title || 'AI generated content'}
+                        {aiContent.title || 'Image Title'}
                       </h3>
                       <p className="mt-3 text-sm leading-6 text-slate-600">
                         {aiContent.caption ||
@@ -1097,7 +1089,7 @@ function HomeContent() {
                     <div className="grid gap-3">
                       <div className="rounded-2xl border bg-white p-3">
                         <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
-                          SEO Keywords
+                          Image SEO Keywords
                         </p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {aiContent.keywords.length ? (
@@ -1120,7 +1112,7 @@ function HomeContent() {
 
                       <div className="rounded-2xl border bg-white p-3">
                         <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
-                          Description
+                          Image Description
                         </p>
                         <p className="mt-2 text-sm leading-6 text-slate-700">
                           {aiContent.description ||
@@ -1141,7 +1133,7 @@ function HomeContent() {
                       <div className="grid gap-3 md:grid-cols-1">
                         <div className="rounded-2xl border bg-white p-3">
                           <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
-                            File name
+                            Image File Name
                           </p>
                           <p className="mt-2 text-sm leading-6 text-slate-700">
                             {aiContent.fileName || 'Not provided'}
