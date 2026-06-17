@@ -13,7 +13,7 @@ RUN npm ci
 
 FROM base AS builder
 
-ARG NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+ARG NEXT_PUBLIC_API_URL=https://api.gmbpostingez.com/api/v1
 
 ENV NODE_ENV=production
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
@@ -31,6 +31,8 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+ENV NEXTAUTH_SECRET=VhP2Gp6XANwgRx+v6qLIBp+0ozQyfdWZUdd2w9XFBsA=
+ENV NEXTAUTH_URL=https://gmbpostingez.com
 
 RUN addgroup --system --gid 1001 nodejs \
   && adduser --system --uid 1001 nextjs
