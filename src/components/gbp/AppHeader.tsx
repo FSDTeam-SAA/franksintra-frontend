@@ -9,7 +9,6 @@ import {
   LogOut,
   Menu,
   Plus,
-  Sparkles,
   UserRound,
   Loader2,
 } from 'lucide-react'
@@ -73,15 +72,19 @@ export function AppHeader() {
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-3 py-3 sm:px-4 md:px-6">
         <div className="flex min-w-0 items-center gap-3 sm:gap-8">
           <Link href="/" className="flex items-center gap-2">
-            <div className="grid h-9 w-9 place-items-center rounded-md bg-[#4285F4] text-white shadow-sm">
-              <Sparkles className="h-4 w-4" />
+            <div className="grid h-9 w-9 place-items-center rounded-md bg-white shadow-sm">
+              <img
+                src="/images/image 1108.svg"
+                alt="Logo"
+                className="h-7 w-7"
+              />
             </div>
             <span className="truncate text-sm font-semibold sm:text-base md:text-lg">
-              GBP Pilot
+              gmbpostingez
             </span>
           </Link>
           <nav className="hidden items-center gap-5 text-sm md:flex md:text-base">
-            {links.map((link) => (
+            {links.map(link => (
               <Link
                 key={link.href}
                 href={link.href}
@@ -137,7 +140,7 @@ export function AppHeader() {
                 </Button>
 
                 <div className="space-y-1">
-                  {links.map((link) => (
+                  {links.map(link => (
                     <Button
                       key={link.href}
                       asChild
@@ -245,7 +248,8 @@ export function AppHeader() {
               <LogOut className="h-5 w-5 text-rose-500" /> Confirm Log Out
             </DialogTitle>
             <DialogDescription className="text-slate-500 text-sm mt-2">
-              Are you sure you want to log out from your account? You will need to log back in to manage your workspace.
+              Are you sure you want to log out from your account? You will need
+              to log back in to manage your workspace.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-5 flex gap-3 justify-end">
@@ -264,7 +268,8 @@ export function AppHeader() {
             >
               {isLoggingOut ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin inline" /> Logging out...
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin inline" />{' '}
+                  Logging out...
                 </>
               ) : (
                 'Yes, Log out'
@@ -276,4 +281,3 @@ export function AppHeader() {
     </header>
   )
 }
-
