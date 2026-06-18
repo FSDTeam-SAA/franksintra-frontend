@@ -1052,10 +1052,10 @@ function HomeContent() {
           <Card className="relative z-0 h-auto min-h-fit w-full shrink-0 overflow-visible rounded-2xl border-slate-200 p-3 shadow-sm transition-all duration-300 hover:shadow-md box-border sm:p-4">
             <CardHeader className="p-0">
               <CardTitle className="text-lg sm:text-xl">
-                Live Post Preview
+                Image Metadata
               </CardTitle>
               <CardDescription className="pr-1 text-sm leading-6 sm:pr-2 sm:text-[15px]">
-                How this appears on Google Business Profile
+                AI-generated metadata for the uploaded image
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0">
@@ -1120,17 +1120,7 @@ function HomeContent() {
                         </p>
                       </div>
 
-                      <div className="rounded-2xl border bg-white p-3">
-                        <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
-                          Google Business Profile Post
-                        </p>
-                        <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 whitespace-pre-wrap text-slate-700">
-                          {aiContent.gmbPost ||
-                            'No GMB post returned by the AI service.'}
-                        </div>
-                      </div>
-
-                      <div className="grid gap-3 md:grid-cols-1">
+                      <div className="grid gap-3">
                         <div className="rounded-2xl border bg-white p-3">
                           <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
                             Image File Name
