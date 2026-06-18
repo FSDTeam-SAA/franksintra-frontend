@@ -279,6 +279,8 @@ function HomeContent() {
   const [showGenerateDialog, setShowGenerateDialog] = React.useState(false)
   const [locationError, setLocationError] = React.useState('')
 
+  const previousStatusRef = React.useRef<JobStatus | null>(null)
+
   const historyQuery = useQuery({
     queryKey: ['jobs-history'],
     queryFn: () => getJobsHistory(1, 8),
@@ -427,10 +429,17 @@ function HomeContent() {
     const job = jobQuery.data
     if (!job) return
 
+    const prevStatus = previousStatusRef.current
+    previousStatusRef.current = job.status
+
     setCurrentStatus(job.status)
     setUploadedImage(getPreferredJobImageUrl(job))
 
     if (job.status === 'DONE') {
+      if (prevStatus && prevStatus !== 'DONE') {
+        void queryClient.invalidateQueries({ queryKey: ['jobs-history'] })
+      }
+
       const parsed = parseAiGeneratedContent(job.aiRawResponse)
       setAiContent(parsed)
       setPostText(
@@ -441,7 +450,7 @@ function HomeContent() {
     if (job.status === 'FAILED') {
       toast.error(job.failureReason || 'AI processing failed')
     }
-  }, [jobQuery.data])
+  }, [jobQuery.data, queryClient])
 
   React.useEffect(() => {
     if (!jobQuery.isError) return
