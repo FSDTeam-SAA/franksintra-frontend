@@ -11,6 +11,7 @@ import {
   ImagePlus,
   Loader2,
   MessageSquare,
+  Pencil,
   Sparkles,
   Trash2,
   Wand2,
@@ -79,13 +80,13 @@ const REFINE_FIELDS = [
   },
   {
     key: 'caption',
-    label: 'Caption',
+    label: 'Image Caption',
     description: 'Rewrite the short caption that goes with the image.',
     placeholder: 'Make the caption warmer, cleaner, or more engaging.',
   },
   {
     key: 'SEO_keywords',
-    label: 'SEO Keywords',
+    label: 'Image Keywords',
     description: 'Improve search terms and local discoverability.',
     placeholder: 'Add city, service, or keyword ideas.',
   },
@@ -260,6 +261,8 @@ function HomeContent() {
     Record<RefineFieldKey, string>
   >(() => createInitialFieldInputs())
   const [activeFieldKey, setActiveFieldKey] =
+    React.useState<RefineFieldKey | null>(null)
+  const [rightActiveFieldKey, setRightActiveFieldKey] =
     React.useState<RefineFieldKey | null>(null)
   const [refineActivity, setRefineActivity] = React.useState<
     Array<{
@@ -918,26 +921,21 @@ function HomeContent() {
               {showRefinePanel && (
                 <div className="space-y-3 rounded-3xl border bg-slate-50 p-3 animate-in fade-in slide-in-from-bottom-2 duration-300 sm:p-4">
                   <div className="space-y-3">
-                    {REFINE_FIELDS.filter(
-                      field => !('hidden' in field && field.hidden),
-                    ).map(field => (
-                      <RefineFieldCard
-                        key={field.key}
-                        field={field}
-                        value={fieldInputs[field.key]}
-                        onChange={value =>
-                          setFieldInputs(previous => ({
-                            ...previous,
-                            [field.key]: value,
-                          }))
-                        }
-                        onSubmit={() => submitRefineField(field.key)}
-                        disabled={
-                          refineMutation.isPending || currentStatus !== 'DONE'
-                        }
-                        pending={activeFieldKey === field.key}
-                      />
-                    ))}
+                    <RefineFieldCard
+                      field={REFINE_FIELDS.find(f => f.key === 'gmb_post')!}
+                      value={fieldInputs.gmb_post}
+                      onChange={value =>
+                        setFieldInputs(previous => ({
+                          ...previous,
+                          gmb_post: value,
+                        }))
+                      }
+                      onSubmit={() => submitRefineField('gmb_post')}
+                      disabled={
+                        refineMutation.isPending || currentStatus !== 'DONE'
+                      }
+                      pending={activeFieldKey === 'gmb_post'}
+                    />
                   </div>
 
                   {!!refineActivity.length && (
@@ -1086,20 +1084,147 @@ function HomeContent() {
                 {aiContent ? (
                   <div className="mt-4 space-y-4">
                     <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
-                      <h3 className="text-base font-semibold text-slate-900 sm:text-lg">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
+                          Image Title
+                        </p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="h-7 w-7 text-slate-400 hover:text-[#4285F4]"
+                          onClick={() =>
+                            setRightActiveFieldKey(
+                              rightActiveFieldKey === 'title' ? null : 'title',
+                            )
+                          }
+                          disabled={isBusy || currentStatus !== 'DONE'}
+                          title="Refine image title"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                      <h3 className="mt-2 text-base font-semibold text-slate-900 sm:text-lg">
                         {aiContent.title || 'Image Title'}
                       </h3>
-                      <p className="mt-3 text-sm leading-6 text-slate-600">
+                      {rightActiveFieldKey === 'title' && (
+                        <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                          <RefineFieldCard
+                            field={REFINE_FIELDS.find(f => f.key === 'title')!}
+                            value={fieldInputs.title}
+                            onChange={value =>
+                              setFieldInputs(previous => ({
+                                ...previous,
+                                title: value,
+                              }))
+                            }
+                            onSubmit={() => submitRefineField('title')}
+                            disabled={
+                              refineMutation.isPending ||
+                              currentStatus !== 'DONE'
+                            }
+                            pending={activeFieldKey === 'title'}
+                          />
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between mt-3">
+                        <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
+                          Image Caption
+                        </p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="h-7 w-7 text-slate-400 hover:text-[#4285F4] shrink-0"
+                          onClick={() =>
+                            setRightActiveFieldKey(
+                              rightActiveFieldKey === 'caption'
+                                ? null
+                                : 'caption',
+                            )
+                          }
+                          disabled={isBusy || currentStatus !== 'DONE'}
+                          title="Refine image caption"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">
                         {aiContent.caption ||
                           'No caption returned by the AI service.'}
                       </p>
+                      {rightActiveFieldKey === 'caption' && (
+                        <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                          <RefineFieldCard
+                            field={
+                              REFINE_FIELDS.find(f => f.key === 'caption')!
+                            }
+                            value={fieldInputs.caption}
+                            onChange={value =>
+                              setFieldInputs(previous => ({
+                                ...previous,
+                                caption: value,
+                              }))
+                            }
+                            onSubmit={() => submitRefineField('caption')}
+                            disabled={
+                              refineMutation.isPending ||
+                              currentStatus !== 'DONE'
+                            }
+                            pending={activeFieldKey === 'caption'}
+                          />
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid gap-3">
                       <div className="rounded-2xl border bg-white p-3">
-                        <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
-                          Image SEO Keywords
-                        </p>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
+                            Image Keywords
+                          </p>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className="h-7 w-7 text-slate-400 hover:text-[#4285F4]"
+                            onClick={() =>
+                              setRightActiveFieldKey(
+                                rightActiveFieldKey === 'SEO_keywords'
+                                  ? null
+                                  : 'SEO_keywords',
+                              )
+                            }
+                            disabled={isBusy || currentStatus !== 'DONE'}
+                            title="Refine image keywords"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        {rightActiveFieldKey === 'SEO_keywords' && (
+                          <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <RefineFieldCard
+                              field={
+                                REFINE_FIELDS.find(
+                                  f => f.key === 'SEO_keywords',
+                                )!
+                              }
+                              value={fieldInputs.SEO_keywords}
+                              onChange={value =>
+                                setFieldInputs(previous => ({
+                                  ...previous,
+                                  SEO_keywords: value,
+                                }))
+                              }
+                              onSubmit={() => submitRefineField('SEO_keywords')}
+                              disabled={
+                                refineMutation.isPending ||
+                                currentStatus !== 'DONE'
+                              }
+                              pending={activeFieldKey === 'SEO_keywords'}
+                            />
+                          </div>
+                        )}
                         <div className="mt-3 flex flex-wrap gap-2">
                           {aiContent.keywords.length ? (
                             aiContent.keywords.map(keyword => (
@@ -1120,24 +1245,106 @@ function HomeContent() {
                       </div>
 
                       <div className="rounded-2xl border bg-white p-3">
-                        <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
-                          Image Description
-                        </p>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
+                            Image Description
+                          </p>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className="h-7 w-7 text-slate-400 hover:text-[#4285F4]"
+                            onClick={() =>
+                              setRightActiveFieldKey(
+                                rightActiveFieldKey === 'description'
+                                  ? null
+                                  : 'description',
+                              )
+                            }
+                            disabled={isBusy || currentStatus !== 'DONE'}
+                            title="Refine image description"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        {rightActiveFieldKey === 'description' && (
+                          <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <RefineFieldCard
+                              field={
+                                REFINE_FIELDS.find(
+                                  f => f.key === 'description',
+                                )!
+                              }
+                              value={fieldInputs.description}
+                              onChange={value =>
+                                setFieldInputs(previous => ({
+                                  ...previous,
+                                  description: value,
+                                }))
+                              }
+                              onSubmit={() => submitRefineField('description')}
+                              disabled={
+                                refineMutation.isPending ||
+                                currentStatus !== 'DONE'
+                              }
+                              pending={activeFieldKey === 'description'}
+                            />
+                          </div>
+                        )}
                         <p className="mt-2 text-sm leading-6 text-slate-700">
                           {aiContent.description ||
                             'No description returned by the AI service.'}
                         </p>
                       </div>
 
-                      <div className="grid gap-3">
-                        <div className="rounded-2xl border bg-white p-3">
+                      <div className="rounded-2xl border bg-white p-3">
+                        <div className="flex items-center justify-between">
                           <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
-                            Image File Name
+                            Image Filename
                           </p>
-                          <p className="mt-2 text-sm leading-6 text-slate-700">
-                            {aiContent.fileName || 'Not provided'}
-                          </p>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className="h-7 w-7 text-slate-400 hover:text-[#4285F4]"
+                            onClick={() =>
+                              setRightActiveFieldKey(
+                                rightActiveFieldKey === 'file_name'
+                                  ? null
+                                  : 'file_name',
+                              )
+                            }
+                            disabled={isBusy || currentStatus !== 'DONE'}
+                            title="Refine image filename"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
                         </div>
+                        {rightActiveFieldKey === 'file_name' && (
+                          <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <RefineFieldCard
+                              field={
+                                REFINE_FIELDS.find(f => f.key === 'file_name')!
+                              }
+                              value={fieldInputs.file_name}
+                              onChange={value =>
+                                setFieldInputs(previous => ({
+                                  ...previous,
+                                  file_name: value,
+                                }))
+                              }
+                              onSubmit={() => submitRefineField('file_name')}
+                              disabled={
+                                refineMutation.isPending ||
+                                currentStatus !== 'DONE'
+                              }
+                              pending={activeFieldKey === 'file_name'}
+                            />
+                          </div>
+                        )}
+                        <p className="mt-2 text-sm leading-6 text-slate-700">
+                          {aiContent.fileName || 'Not provided'}
+                        </p>
                       </div>
                     </div>
                   </div>
