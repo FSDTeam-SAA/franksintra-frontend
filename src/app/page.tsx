@@ -140,32 +140,6 @@ function getRefineFieldLabel(fieldKey: RefineFieldKey) {
   return REFINE_FIELDS.find(field => field.key === fieldKey)?.label ?? fieldKey
 }
 
-function getRefineFieldValue(
-  fieldKey: RefineFieldKey,
-  content: ParsedAiContent | null,
-) {
-  if (!content) return ''
-
-  switch (fieldKey) {
-    case 'title':
-      return content.title
-    case 'caption':
-      return content.caption
-    case 'SEO_keywords':
-      return content.keywords.join(', ')
-    case 'description':
-      return content.description
-    case 'assign_location':
-      return content.location
-    case 'gmb_post':
-      return content.gmbPost
-    case 'file_name':
-      return content.fileName
-    default:
-      return ''
-  }
-}
-
 function getDownloadFilename(
   fileName: string,
   updatedImageUrl?: string | null,
@@ -673,21 +647,6 @@ function HomeContent() {
     textarea.style.height = '0px'
     textarea.style.height = `${textarea.scrollHeight}px`
   }, [displayPostText])
-
-  React.useEffect(() => {
-    if (!aiContent) return
-
-    setFieldInputs(previous => ({
-      ...previous,
-      title: getRefineFieldValue('title', aiContent),
-      caption: getRefineFieldValue('caption', aiContent),
-      SEO_keywords: getRefineFieldValue('SEO_keywords', aiContent),
-      description: getRefineFieldValue('description', aiContent),
-      assign_location: getRefineFieldValue('assign_location', aiContent),
-      gmb_post: getRefineFieldValue('gmb_post', aiContent),
-      file_name: getRefineFieldValue('file_name', aiContent),
-    }))
-  }, [aiContent])
 
   const HistoryList = () => (
     <div className="space-y-3">
