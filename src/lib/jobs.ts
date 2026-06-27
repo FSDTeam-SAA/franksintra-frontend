@@ -27,14 +27,22 @@ export type JobRecord = JobHistoryItem & {
   imageHash?: string
   assignLocation?: string | null
   preferredInstructions?: string | null
-  aiRawResponse?: string | null
+  aiRawResponse?: unknown
+  latestAiResponse?: unknown
+  latestChatHistory?: {
+    role: 'user' | 'assistant'
+    update_field_name: string
+    user_instruction: string
+    ai_response: unknown
+    createdAt: string
+  } | null
   updatedMetadata?: Record<string, unknown> | null
   failureReason?: string | null
   chatHistory?: Array<{
     role: 'user' | 'assistant'
     update_field_name: string
     user_instruction: string
-    ai_response: string | null
+    ai_response: unknown
     createdAt: string
   }>
 }
@@ -57,7 +65,7 @@ export type UploadJobResponse = {
 export type RefineJobResponse = {
   jobId: string
   update_field_name: string
-  ai_response: string
+  ai_response?: unknown
   chatHistory: NonNullable<JobRecord['chatHistory']>
 }
 

@@ -238,14 +238,6 @@ function HomeContent() {
     React.useState<RefineFieldKey | null>(null)
   const [rightActiveFieldKey, setRightActiveFieldKey] =
     React.useState<RefineFieldKey | null>(null)
-  const [refineActivity, setRefineActivity] = React.useState<
-    Array<{
-      field: RefineFieldKey
-      instruction: string
-      response: string
-      createdAt: string
-    }>
-  >([])
   const [assignLocation, setAssignLocation] = React.useState('')
   const [preferredInstructions, setPreferredInstructions] = React.useState('')
   const [companyName, setCompanyName] = React.useState('')
@@ -297,7 +289,6 @@ function HomeContent() {
       setCurrentStatus('PENDING')
       setPostText('')
       setAiContent(null)
-      setRefineActivity([])
       setShowRefinePanel(false)
     },
     onSuccess: async data => {
@@ -335,34 +326,24 @@ function HomeContent() {
       setCurrentStatus('PROCESSING')
     },
     onSuccess: async (data, variables) => {
-      const parsed = parseAiGeneratedContent(data.ai_response)
+      const latestAiResponse =
+        data.chatHistory?.[data.chatHistory.length - 1]?.ai_response ??
+        data.ai_response
+
+      const parsed = parseAiGeneratedContent(latestAiResponse)
       if (parsed) {
         setAiContent(parsed)
         setPostText(
           parsed.gmbPost || parsed.caption || parsed.description || '',
         )
       } else {
-        setPostText(data.ai_response)
+        setPostText('')
       }
       setCurrentStatus('DONE')
       setFieldInputs(previous => ({
         ...previous,
         [variables.update_field_name as RefineFieldKey]: '',
       }))
-      setRefineActivity(previous => [
-        {
-          field: variables.update_field_name as RefineFieldKey,
-          instruction: variables.user_instruction,
-          response:
-            parsed?.gmbPost ||
-            parsed?.caption ||
-            parsed?.description ||
-            data.ai_response,
-          createdAt: new Date().toISOString(),
-        },
-        ...previous,
-      ])
-
       toast.success(
         `Updated ${getRefineFieldLabel(variables.update_field_name as RefineFieldKey)}`,
       )
@@ -393,7 +374,6 @@ function HomeContent() {
         setCurrentStatus(null)
         setPostText('')
         setAiContent(null)
-        setRefineActivity([])
         setShowRefinePanel(false)
       }
     },
@@ -417,7 +397,12 @@ function HomeContent() {
         void queryClient.invalidateQueries({ queryKey: ['jobs-history'] })
       }
 
-      const parsed = parseAiGeneratedContent(job.aiRawResponse)
+      const latestAiResponse =
+        job.latestAiResponse ??
+        job.latestChatHistory?.ai_response ??
+        job.aiRawResponse
+
+      const parsed = parseAiGeneratedContent(latestAiResponse)
       setAiContent(parsed)
       setPostText(
         parsed?.gmbPost || parsed?.caption || parsed?.description || '',
@@ -469,7 +454,6 @@ function HomeContent() {
     setShowRefinePanel(false)
     setFieldInputs(createInitialFieldInputs())
     setActiveFieldKey(null)
-    setRefineActivity([])
     setCopied(false)
     setDeleteDialogJobId(null)
   }, [])
@@ -499,7 +483,6 @@ function HomeContent() {
     setCurrentStatus(null)
     setPostText('')
     setAiContent(null)
-    setRefineActivity([])
     setShowRefinePanel(false)
   }, [
     activeJobId,
@@ -519,7 +502,6 @@ function HomeContent() {
     setActiveJobId(null)
     setPostText('')
     setAiContent(null)
-    setRefineActivity([])
     setShowRefinePanel(false)
   }
 
@@ -827,7 +809,9 @@ function HomeContent() {
             </CardHeader>
             <CardContent className="space-y-4 p-0">
               {isRefining && aiContent ? (
-                <AiThinkingLoader active mode="refine" className="mb-4" />
+                <div className="rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-700">
+                  Updating the current response with your latest edit...
+                </div>
               ) : null}
 
               {shouldShowThinkingLoader ? (
@@ -897,39 +881,6 @@ function HomeContent() {
                     />
                   </div>
 
-                  {!!refineActivity.length && (
-                    <div className="rounded-3xl border border-slate-200 bg-white p-3 sm:p-4">
-                      <p className="text-sm font-semibold text-slate-900">
-                        Recent refine activity
-                      </p>
-                      <div className="mt-3 space-y-3">
-                        {refineActivity.map(entry => (
-                          <div
-                            key={`${entry.field}-${entry.createdAt}`}
-                            className="rounded-2xl bg-slate-50 px-3 py-3 sm:px-4"
-                          >
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge
-                                variant="secondary"
-                                className="rounded-full px-2.5 py-0.5 text-xs"
-                              >
-                                {getRefineFieldLabel(entry.field)}
-                              </Badge>
-                              <span className="text-sm text-slate-500">
-                                {new Date(entry.createdAt).toLocaleString()}
-                              </span>
-                            </div>
-                            <p className="mt-2 text-sm leading-6 text-slate-700">
-                              {entry.instruction}
-                            </p>
-                            <p className="mt-2 rounded-xl bg-white px-3 py-2 text-sm leading-6 text-slate-600 shadow-sm">
-                              {entry.response}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
             </CardContent>
