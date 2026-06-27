@@ -880,7 +880,6 @@ function HomeContent() {
                       pending={activeFieldKey === 'gmb_post'}
                     />
                   </div>
-
                 </div>
               )}
             </CardContent>
