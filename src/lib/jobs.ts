@@ -330,7 +330,14 @@ function unwrap<T>(payload: ApiEnvelope<T>): T {
   return payload.data
 }
 
+function authHeaders(accessToken: string) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+  }
+}
+
 export async function uploadJob(
+  accessToken: string,
   image: File,
   assignLocation?: string,
   preferredInstructions?: string,
@@ -346,19 +353,29 @@ export async function uploadJob(
   const response = await axiosInstance.post<ApiEnvelope<UploadJobResponse>>(
     '/jobs/upload',
     formData,
+    {
+      headers: authHeaders(accessToken),
+    },
   )
 
   return unwrap(response.data)
 }
 
-export async function getJob(jobId: string): Promise<JobRecord> {
+export async function getJob(
+  accessToken: string,
+  jobId: string,
+): Promise<JobRecord> {
   const response = await axiosInstance.get<ApiEnvelope<JobRecord>>(
     `/jobs/${jobId}`,
+    {
+      headers: authHeaders(accessToken),
+    },
   )
   return unwrap(response.data)
 }
 
 export async function getJobsHistory(
+  accessToken: string,
   page = 1,
   limit = 8,
 ): Promise<JobsHistoryResponse> {
@@ -366,6 +383,7 @@ export async function getJobsHistory(
     '/jobs/history',
     {
       params: { page, limit },
+      headers: authHeaders(accessToken),
     },
   )
 
@@ -373,6 +391,7 @@ export async function getJobsHistory(
 }
 
 export async function refineJob(params: {
+  accessToken: string
   jobId: string
   update_field_name: string
   user_instruction: string
@@ -383,14 +402,23 @@ export async function refineJob(params: {
       update_field_name: params.update_field_name,
       user_instruction: params.user_instruction,
     },
+    {
+      headers: authHeaders(params.accessToken),
+    },
   )
 
   return unwrap(response.data)
 }
 
-export async function deleteJob(jobId: string): Promise<DeleteJobResponse> {
+export async function deleteJob(
+  accessToken: string,
+  jobId: string,
+): Promise<DeleteJobResponse> {
   const response = await axiosInstance.delete<ApiEnvelope<DeleteJobResponse>>(
     `/jobs/${jobId}`,
+    {
+      headers: authHeaders(accessToken),
+    },
   )
 
   return unwrap(response.data)

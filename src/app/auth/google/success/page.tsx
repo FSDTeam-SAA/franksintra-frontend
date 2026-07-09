@@ -3,8 +3,9 @@
 import * as React from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { signIn } from 'next-auth/react'
-import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { CheckCircle2, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
+import { Skeleton } from '@/components/ui/skeleton'
 
 function GoogleSuccessHandler() {
   const router = useRouter()
@@ -62,11 +63,9 @@ function GoogleSuccessHandler() {
       <div className="max-w-md w-full rounded-[2rem] border border-slate-200/80 bg-white/95 p-8 shadow-[0_25px_80px_rgba(15,23,42,0.12)] backdrop-blur text-center space-y-6">
         {status === 'loading' && (
           <div className="flex flex-col items-center space-y-4">
-            <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-[#4285F4]/10 text-[#4285F4]">
-              <Loader2 className="h-8 w-8 animate-spin" />
-            </div>
-            <h2 className="text-xl font-semibold text-slate-800">Signing in</h2>
-            <p className="text-sm text-slate-500">{message}</p>
+            <Skeleton className="h-16 w-16 rounded-2xl" />
+            <Skeleton className="h-6 w-32 rounded-full" />
+            <Skeleton className="h-4 w-64 rounded-full" />
           </div>
         )}
 
@@ -99,11 +98,15 @@ export default function GoogleSuccessPage() {
   return (
     <React.Suspense
       fallback={
-        <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(66,133,244,0.14),_transparent_35%),radial-gradient(circle_at_bottom_right,_rgba(15,23,42,0.08),_transparent_30%),linear-gradient(180deg,_#f8fbff_0%,_#eef4ff_100%)] flex items-center justify-center text-slate-500"
-      >
-        <Loader2 className="h-6 w-6 animate-spin text-[#4285F4] mr-2" />
-        Loading...
-      </div>
+        <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(66,133,244,0.14),_transparent_35%),radial-gradient(circle_at_bottom_right,_rgba(15,23,42,0.08),_transparent_30%),linear-gradient(180deg,_#f8fbff_0%,_#eef4ff_100%)] px-4">
+          <div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white/95 p-8 shadow-[0_25px_80px_rgba(15,23,42,0.12)]">
+            <div className="flex flex-col items-center space-y-4">
+              <Skeleton className="h-16 w-16 rounded-2xl" />
+              <Skeleton className="h-6 w-32 rounded-full" />
+              <Skeleton className="h-4 w-64 rounded-full" />
+            </div>
+          </div>
+        </div>
       }
     >
       <GoogleSuccessHandler />

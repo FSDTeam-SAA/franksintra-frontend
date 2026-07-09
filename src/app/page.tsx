@@ -9,7 +9,6 @@ import {
   Copy,
   History,
   ImagePlus,
-  Loader2,
   MessageSquare,
   Pencil,
   Sparkles,
@@ -18,6 +17,8 @@ import {
 } from 'lucide-react'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
+import { useSession } from 'next-auth/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
@@ -33,6 +34,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Sheet,
   SheetContent,
@@ -66,6 +68,7 @@ import {
   type ParsedAiContent,
   type JobStatus,
 } from '@/lib/jobs'
+import { getCurrentSubscription } from '@/lib/subscriptions'
 
 type HistoryStatus = 'Published' | 'Draft'
 type GenerationMode = 'upload' | 'refine'
@@ -185,7 +188,7 @@ function RefineFieldCard({
         </div>
         {pending ? (
           <span className="inline-flex items-center gap-2 rounded-full bg-sky-50 px-3 py-1 text-sm font-medium text-sky-700">
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Skeleton className="h-4 w-4 rounded-full bg-sky-200" />
             Sending
           </span>
         ) : null}
@@ -219,6 +222,8 @@ function HomeContent() {
   const queryClient = useQueryClient()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { data: session } = useSession()
+  const accessToken = session?.accessToken ?? ''
   const postTextareaRef = React.useRef<HTMLTextAreaElement | null>(null)
   const [uploadedImage, setUploadedImage] = React.useState<string | null>(null)
   const [selectedFile, setSelectedFile] = React.useState<File | null>(null)
@@ -251,17 +256,18 @@ function HomeContent() {
   const previousStatusRef = React.useRef<JobStatus | null>(null)
 
   const historyQuery = useQuery({
-    queryKey: ['jobs-history'],
-    queryFn: () => getJobsHistory(1, 8),
+    queryKey: ['jobs-history', accessToken],
+    queryFn: () => getJobsHistory(accessToken, 1, 8),
+    enabled: Boolean(accessToken),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
   })
 
   const jobQuery = useQuery({
-    queryKey: ['job', activeJobId],
-    queryFn: () => getJob(activeJobId as string),
-    enabled: Boolean(activeJobId),
+    queryKey: ['job', activeJobId, accessToken],
+    queryFn: () => getJob(accessToken, activeJobId as string),
+    enabled: Boolean(activeJobId && accessToken),
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
     retry: 2,
@@ -270,6 +276,13 @@ function HomeContent() {
       const status = query.state.data?.status
       return status === 'PENDING' || status === 'PROCESSING' ? 2000 : false
     },
+  })
+
+  const subscriptionQuery = useQuery({
+    queryKey: ['subscription-status', accessToken],
+    queryFn: () => getCurrentSubscription(accessToken),
+    enabled: Boolean(accessToken),
+    staleTime: 30_000,
   })
 
   const uploadMutation = useMutation({
@@ -283,7 +296,7 @@ function HomeContent() {
       location?: string
       instructions?: string
       companyName?: string
-    }) => uploadJob(file, location, instructions, companyName),
+    }) => uploadJob(accessToken, file, location, instructions, companyName),
     onMutate: async () => {
       setGenerationMode('upload')
       setCurrentStatus('PENDING')
@@ -296,7 +309,7 @@ function HomeContent() {
       setCurrentStatus(data.status)
       toast.success('Image uploaded. AI processing started.')
       void queryClient.refetchQueries({
-        queryKey: ['job', data.jobId],
+        queryKey: ['job', data.jobId, accessToken],
         exact: true,
       })
       await queryClient.invalidateQueries({ queryKey: ['jobs-history'] })
@@ -307,7 +320,7 @@ function HomeContent() {
         setActiveJobId(duplicateJobId)
         toast.info('This image already exists. Loading the existing job.')
         void queryClient.refetchQueries({
-          queryKey: ['job', duplicateJobId],
+          queryKey: ['job', duplicateJobId, accessToken],
           exact: true,
         })
         return
@@ -362,7 +375,7 @@ function HomeContent() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: deleteJob,
+    mutationFn: (jobId: string) => deleteJob(accessToken, jobId),
     onSuccess: async (_, jobId) => {
       toast.success('History item deleted')
       await queryClient.invalidateQueries({ queryKey: ['jobs-history'] })
@@ -436,11 +449,11 @@ function HomeContent() {
       setGenerationMode('upload')
       setShowRefinePanel(false)
       void queryClient.refetchQueries({
-        queryKey: ['job', item._id],
+        queryKey: ['job', item._id, accessToken],
         exact: true,
       })
     },
-    [queryClient],
+    [accessToken, queryClient],
   )
 
   const resetComposerState = React.useCallback(() => {
@@ -506,6 +519,12 @@ function HomeContent() {
   }
 
   const handleGenerate = () => {
+    if (!subscriptionQuery.data?.hasActiveSubscription) {
+      toast.error('Please subscribe to generate GMB content.')
+      router.push('/subscription')
+      return
+    }
+
     if (!selectedFile) {
       toast.error('Upload an image first')
       return
@@ -520,6 +539,12 @@ function HomeContent() {
   }
 
   const handleCopy = async () => {
+    if (!subscriptionQuery.data?.hasActiveSubscription) {
+      toast.error('Please subscribe to copy generated posts.')
+      router.push('/subscription')
+      return
+    }
+
     if (!displayPostText) return
     await navigator.clipboard.writeText(displayPostText)
     setCopied(true)
@@ -527,6 +552,12 @@ function HomeContent() {
   }
 
   const handleCopyGmbPost = async () => {
+    if (!subscriptionQuery.data?.hasActiveSubscription) {
+      toast.error('Please subscribe to copy generated posts.')
+      router.push('/subscription')
+      return
+    }
+
     if (!aiContent?.gmbPost) return
     await navigator.clipboard.writeText(aiContent.gmbPost)
     setCopied(true)
@@ -534,6 +565,12 @@ function HomeContent() {
   }
 
   const handleCopyFullPackage = async () => {
+    if (!subscriptionQuery.data?.hasActiveSubscription) {
+      toast.error('Please subscribe to copy the full content pack.')
+      router.push('/subscription')
+      return
+    }
+
     if (!aiContent) return
     await navigator.clipboard.writeText(formatAiContentForCopy(aiContent))
     setCopied(true)
@@ -584,6 +621,12 @@ function HomeContent() {
       return
     }
 
+    if (!subscriptionQuery.data?.hasActiveSubscription) {
+      toast.error('Please subscribe to refine generated content.')
+      router.push('/subscription')
+      return
+    }
+
     if (currentStatus !== 'DONE') {
       toast.error('Wait until the current job finishes processing.')
       return
@@ -597,12 +640,16 @@ function HomeContent() {
 
     refineMutation.mutate({
       jobId: activeJobId,
+      accessToken,
       update_field_name: field,
       user_instruction: instruction,
     })
   }
 
   const historyItems = historyQuery.data?.jobs ?? []
+  const hasActiveSubscription = Boolean(
+    subscriptionQuery.data?.hasActiveSubscription,
+  )
   const isBusy =
     uploadMutation.isPending ||
     refineMutation.isPending ||
@@ -634,8 +681,18 @@ function HomeContent() {
     <div className="space-y-3">
       {historyQuery.isLoading ? (
         <div className="space-y-3 rounded-3xl border bg-white p-3 sm:p-4">
-          <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
-          <p className="text-sm text-slate-500">Loading recent jobs...</p>
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="flex items-start gap-3">
+              <Skeleton className="h-14 w-14 rounded-xl" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-5 w-4/5 rounded-full" />
+                <div className="flex gap-2">
+                  <Skeleton className="h-5 w-20 rounded-full" />
+                  <Skeleton className="h-5 w-24 rounded-full" />
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       ) : historyQuery.isError ? (
         <div className="rounded-3xl border bg-white p-3 text-sm text-rose-600 sm:p-4">
@@ -713,6 +770,16 @@ function HomeContent() {
 
       <main className="mx-auto grid max-w-7xl items-start gap-4 px-3 py-4 sm:px-4 md:grid-cols-5 md:gap-6 md:px-6 md:py-6">
         <section className="flex w-full flex-col gap-4 md:col-span-3">
+          {!hasActiveSubscription ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm">
+              Subscription is required for generating, refining, and copying
+              GMB content.{' '}
+              <Link href="/subscription" className="font-semibold underline">
+                Choose a plan
+              </Link>
+            </div>
+          ) : null}
+
           <Card className="block h-auto min-h-fit w-full overflow-visible rounded-2xl border-slate-200 p-3 shadow-sm transition-all duration-300 hover:shadow-md box-border sm:p-4 md:p-5">
             <CardHeader className="p-0">
               <CardTitle className="text-lg sm:text-xl">
@@ -735,7 +802,7 @@ function HomeContent() {
                   <div className="flex flex-col items-center justify-center gap-3 text-center min-h-[200px] w-full">
                     <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-slate-500 shadow-sm transition group-hover:scale-105">
                       {uploadMutation.isPending ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
+                        <Skeleton className="h-6 w-6 rounded-full" />
                       ) : (
                         <ImagePlus className="h-5 w-5" />
                       )}
@@ -786,7 +853,7 @@ function HomeContent() {
                 className="w-full rounded-xl bg-[#4285F4] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#3777dd] disabled:opacity-50"
               >
                 {uploadMutation.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Skeleton className="mr-2 h-4 w-4 rounded-full bg-white/40" />
                 ) : (
                   <Sparkles className="mr-2 h-4 w-4" />
                 )}
@@ -1413,7 +1480,7 @@ function HomeContent() {
               className="rounded-xl bg-[#4285F4] px-6 hover:bg-[#3777dd]"
             >
               {uploadMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Skeleton className="mr-2 h-4 w-4 rounded-full bg-white/40" />
               ) : (
                 <Sparkles className="mr-2 h-4 w-4" />
               )}
@@ -1454,7 +1521,7 @@ function HomeContent() {
               disabled={deleteMutation.isPending || !deleteDialogJobId}
             >
               {deleteMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Skeleton className="mr-2 h-4 w-4 rounded-full bg-white/40" />
               ) : (
                 <Trash2 className="mr-2 h-4 w-4" />
               )}
