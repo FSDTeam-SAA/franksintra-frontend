@@ -10,13 +10,13 @@ import {
   Menu,
   Plus,
   UserRound,
-  Loader2,
 } from 'lucide-react'
 import { signOut, useSession } from 'next-auth/react'
 import { toast } from 'sonner'
 
 import { logout } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Sheet,
   SheetContent,
@@ -37,13 +37,14 @@ import { cn } from '@/lib/utils'
 const links = [
   { href: '/', label: 'Home' },
   { href: '/history', label: 'History' },
-  { href: '/account', label: 'Account' },
+  { href: '/subscription', label: 'Subscription' },
 ]
 
 export function AppHeader() {
   const pathname = usePathname()
   const router = useRouter()
   const { data: session, status } = useSession()
+  const isAdmin = session?.user?.role === 'ADMIN'
   const [isLoggingOut, setIsLoggingOut] = React.useState(false)
   const [isLogoutOpen, setIsLogoutOpen] = React.useState(false)
 
@@ -171,9 +172,9 @@ export function AppHeader() {
                   variant="outline"
                   className="w-full justify-start rounded-xl"
                 >
-                  <Link href="/account">
+                  <Link href={isAdmin ? '/admin' : '/account'}>
                     <UserRound className="mr-2 h-4 w-4" />
-                    Account settings
+                    {isAdmin ? 'Admin dashboard' : 'Account settings'}
                   </Link>
                 </Button>
 
@@ -210,7 +211,7 @@ export function AppHeader() {
                 variant="outline"
                 className="hidden rounded-xl px-4 sm:inline-flex"
               >
-                <Link href="/account">
+                <Link href={isAdmin ? '/admin' : '/account'}>
                   <UserRound className="mr-2 h-4 w-4" />
                   Account
                 </Link>
@@ -268,7 +269,7 @@ export function AppHeader() {
             >
               {isLoggingOut ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin inline" />{' '}
+                  <Skeleton className="mr-2 h-4 w-4 rounded-full bg-white/40" />
                   Logging out...
                 </>
               ) : (
