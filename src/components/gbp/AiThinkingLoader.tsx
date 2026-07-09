@@ -4,13 +4,13 @@ import { useEffect, useState, type ReactNode } from 'react'
 import {
   BadgeCheck,
   ImagePlus,
-  Loader2,
   MessageSquare,
   Sparkles,
   Wand2,
 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import { Skeleton } from '@/components/ui/skeleton'
 
 type GenerationMode = 'upload' | 'regenerate' | 'refine'
 
@@ -158,9 +158,7 @@ export function AiThinkingLoader({
       )}
     >
       <div className="flex items-start gap-3">
-        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-sky-600 text-white shadow-sm">
-          <Loader2 className="h-5 w-5 animate-spin" />
-        </div>
+        <Skeleton className="h-11 w-11 shrink-0 rounded-2xl bg-sky-100" />
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -206,7 +204,7 @@ export function AiThinkingLoader({
                 )}
               >
                 {isActive ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Skeleton className="h-4 w-4 rounded-full bg-white/70" />
                 ) : (
                   step.icon
                 )}

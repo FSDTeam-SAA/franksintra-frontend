@@ -2,13 +2,13 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { signIn } from 'next-auth/react'
 import {
   ArrowRight,
   Eye,
   EyeOff,
-  LockKeyhole,
+  UserPlus,
   ShieldCheck,
   Sparkles,
   UserRound,
@@ -20,11 +20,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
+import { axiosInstance } from '@/lib/axios'
 
-function LoginForm() {
+function RegisterForm() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get('callbackUrl') ?? '/'
+  const [name, setName] = React.useState('')
   const [email, setEmail] = React.useState('')
   const [password, setPassword] = React.useState('')
   const [showPassword, setShowPassword] = React.useState(false)
@@ -35,22 +35,34 @@ function LoginForm() {
     setIsSubmitting(true)
 
     try {
+      // 1. Call Register Endpoint
+      await axiosInstance.post('/auth/register', {
+        name,
+        email,
+        password,
+      })
+
+      toast.success('Registration successful! Logging you in...')
+
+      // 2. Automate Login
       const result = await signIn('credentials', {
         redirect: false,
         email,
         password,
-        callbackUrl,
       })
 
       if (result?.error) {
-        toast.error('Invalid email or password')
+        toast.error('Registered successfully, but failed to log in automatically. Please log in.')
+        router.push('/login')
         return
       }
 
-      toast.success('Logged in successfully')
-      router.push(callbackUrl)
-    } catch {
-      toast.error('Could not sign in right now')
+      toast.success('Welcome to GBP Pilot!')
+      router.push('/')
+    } catch (error) {
+      const axiosError = error as { response?: { data?: { message?: string } } }
+      const message = axiosError?.response?.data?.message || 'Could not register right now'
+      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }
@@ -64,28 +76,28 @@ function LoginForm() {
           <div className="relative space-y-6">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm">
               <Sparkles className="h-4 w-4 text-[#8ab4f8]" />
-              GBP Pilot workspace access
+              Create your GBP Pilot workspace
             </div>
             <div className="max-w-xl space-y-4">
               <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-                One login for the full posting workflow.
+                Get started with the full posting workflow.
               </h1>
               <p className="max-w-lg text-base leading-7 text-slate-200 sm:text-lg">
-                Access your content generator, history, and account tools from a
-                single secure workspace built around the backend auth flow.
+                Create your account to access your content generator, history, and account tools from a
+                single secure workspace.
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               {[
                 {
                   icon: ShieldCheck,
-                  title: 'Protected pages',
-                  text: 'Middleware keeps the app locked until you sign in.',
+                  title: 'Secure Accounts',
+                  text: 'Industry-standard JWT encryption keeps your workflow safe.',
                 },
                 {
                   icon: UserRound,
-                  title: 'Fast account access',
-                  text: 'Jump straight to history and account settings after login.',
+                  title: 'Multi-User Access',
+                  text: 'Manage profiles, schedules, and custom settings separately.',
                 },
               ].map((item) => (
                 <div
@@ -106,17 +118,29 @@ function LoginForm() {
         <Card className="flex flex-col justify-center rounded-[2rem] border-slate-200/80 bg-white/95 shadow-[0_25px_80px_rgba(15,23,42,0.12)] backdrop-blur">
           <CardHeader className="space-y-3 pb-4">
             <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[#4285F4]/10 text-[#4285F4]">
-              <LockKeyhole className="h-5 w-5" />
+              <UserPlus className="h-5 w-5" />
             </div>
             <div>
-              <CardTitle className="text-2xl">Welcome back</CardTitle>
+              <CardTitle className="text-2xl">Create account</CardTitle>
               <CardDescription className="mt-2 text-sm leading-6 sm:text-[15px]">
-                Sign in with your backend account to continue.
+                Sign up to begin scheduling your GMB posts.
               </CardDescription>
             </div>
           </CardHeader>
           <CardContent>
-            <form className="space-y-5" onSubmit={handleSubmit}>
+            <form className="space-y-4" onSubmit={handleSubmit}>
+              <div className="space-y-2">
+                <Label htmlFor="name">Full Name</Label>
+                <Input
+                  id="name"
+                  type="text"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  placeholder="John Doe"
+                  autoComplete="name"
+                  required
+                />
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -137,8 +161,8 @@ function LoginForm() {
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
-                    placeholder="Your password"
-                    autoComplete="current-password"
+                    placeholder="Min 6 characters"
+                    autoComplete="new-password"
                     required
                     className="pr-10"
                   />
@@ -154,25 +178,16 @@ function LoginForm() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 text-sm">
-                <Link
-                  href="/forgot-password"
-                  className="font-medium text-[#4285F4] transition-colors hover:text-[#3777dd]"
-                >
-                  Forgot password?
-                </Link>
-              </div>
-
               <Button
                 type="submit"
-                className="w-full rounded-2xl bg-[#4285F4] px-5 py-6 text-base hover:bg-[#3777dd]"
+                className="w-full rounded-2xl bg-[#4285F4] px-5 py-6 text-base hover:bg-[#3777dd] mt-2"
                 disabled={isSubmitting}
               >
-                {isSubmitting ? 'Signing in...' : 'Login to dashboard'}
+                {isSubmitting ? 'Registering...' : 'Register account'}
                 {!isSubmitting && <ArrowRight className="ml-2 h-4 w-4" />}
               </Button>
 
-              <div className="relative my-4">
+              <div className="relative my-3">
                 <div className="absolute inset-0 flex items-center">
                   <span className="w-full border-t border-slate-200" />
                 </div>
@@ -207,16 +222,16 @@ function LoginForm() {
                     fill="#EA4335"
                   />
                 </svg>
-                Sign in with Google
+                Sign up with Google
               </Button>
 
-              <div className="text-center text-sm text-slate-500 mt-4">
-                Don&apos;t have an account?{' '}
+              <div className="text-center text-sm text-slate-500 mt-3">
+                Already have an account?{' '}
                 <Link
-                  href="/register"
+                  href="/login"
                   className="font-medium text-[#4285F4] transition-colors hover:text-[#3777dd]"
                 >
-                  Sign up
+                  Sign in
                 </Link>
               </div>
             </form>
@@ -227,16 +242,17 @@ function LoginForm() {
   )
 }
 
-export default function LoginPage() {
+export default function RegisterPage() {
   return (
     <React.Suspense
       fallback={
         <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(66,133,244,0.14),_transparent_35%),radial-gradient(circle_at_bottom_right,_rgba(15,23,42,0.08),_transparent_30%),linear-gradient(180deg,_#f8fbff_0%,_#eef4ff_100%)] px-4">
           <div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white/95 p-6 shadow-[0_25px_80px_rgba(15,23,42,0.12)]">
             <Skeleton className="h-12 w-12 rounded-2xl" />
-            <Skeleton className="mt-5 h-7 w-48 rounded-full" />
+            <Skeleton className="mt-5 h-7 w-52 rounded-full" />
             <Skeleton className="mt-3 h-4 w-64 rounded-full" />
             <div className="mt-6 space-y-4">
+              <Skeleton className="h-10 w-full rounded-xl" />
               <Skeleton className="h-10 w-full rounded-xl" />
               <Skeleton className="h-10 w-full rounded-xl" />
               <Skeleton className="h-12 w-full rounded-2xl" />
@@ -245,7 +261,7 @@ export default function LoginPage() {
         </div>
       }
     >
-      <LoginForm />
+      <RegisterForm />
     </React.Suspense>
   )
 }

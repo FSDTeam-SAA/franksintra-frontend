@@ -9,14 +9,16 @@ import {
   Copy,
   History,
   ImagePlus,
-  Loader2,
   MessageSquare,
+  Pencil,
   Sparkles,
   Trash2,
   Wand2,
 } from 'lucide-react'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
+import { useSession } from 'next-auth/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
@@ -32,6 +34,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Sheet,
   SheetContent,
@@ -65,6 +68,7 @@ import {
   type ParsedAiContent,
   type JobStatus,
 } from '@/lib/jobs'
+import { getCurrentSubscription } from '@/lib/subscriptions'
 
 type HistoryStatus = 'Published' | 'Draft'
 type GenerationMode = 'upload' | 'refine'
@@ -79,13 +83,13 @@ const REFINE_FIELDS = [
   },
   {
     key: 'caption',
-    label: 'Caption',
+    label: 'Image Caption',
     description: 'Rewrite the short caption that goes with the image.',
     placeholder: 'Make the caption warmer, cleaner, or more engaging.',
   },
   {
     key: 'SEO_keywords',
-    label: 'SEO Keywords',
+    label: 'Image Keywords',
     description: 'Improve search terms and local discoverability.',
     placeholder: 'Add city, service, or keyword ideas.',
   },
@@ -139,32 +143,6 @@ function getRefineFieldLabel(fieldKey: RefineFieldKey) {
   return REFINE_FIELDS.find(field => field.key === fieldKey)?.label ?? fieldKey
 }
 
-function getRefineFieldValue(
-  fieldKey: RefineFieldKey,
-  content: ParsedAiContent | null,
-) {
-  if (!content) return ''
-
-  switch (fieldKey) {
-    case 'title':
-      return content.title
-    case 'caption':
-      return content.caption
-    case 'SEO_keywords':
-      return content.keywords.join(', ')
-    case 'description':
-      return content.description
-    case 'assign_location':
-      return content.location
-    case 'gmb_post':
-      return content.gmbPost
-    case 'file_name':
-      return content.fileName
-    default:
-      return ''
-  }
-}
-
 function getDownloadFilename(
   fileName: string,
   updatedImageUrl?: string | null,
@@ -210,7 +188,7 @@ function RefineFieldCard({
         </div>
         {pending ? (
           <span className="inline-flex items-center gap-2 rounded-full bg-sky-50 px-3 py-1 text-sm font-medium text-sky-700">
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Skeleton className="h-4 w-4 rounded-full bg-sky-200" />
             Sending
           </span>
         ) : null}
@@ -244,6 +222,8 @@ function HomeContent() {
   const queryClient = useQueryClient()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { data: session } = useSession()
+  const accessToken = session?.accessToken ?? ''
   const postTextareaRef = React.useRef<HTMLTextAreaElement | null>(null)
   const [uploadedImage, setUploadedImage] = React.useState<string | null>(null)
   const [selectedFile, setSelectedFile] = React.useState<File | null>(null)
@@ -261,14 +241,8 @@ function HomeContent() {
   >(() => createInitialFieldInputs())
   const [activeFieldKey, setActiveFieldKey] =
     React.useState<RefineFieldKey | null>(null)
-  const [refineActivity, setRefineActivity] = React.useState<
-    Array<{
-      field: RefineFieldKey
-      instruction: string
-      response: string
-      createdAt: string
-    }>
-  >([])
+  const [rightActiveFieldKey, setRightActiveFieldKey] =
+    React.useState<RefineFieldKey | null>(null)
   const [assignLocation, setAssignLocation] = React.useState('')
   const [preferredInstructions, setPreferredInstructions] = React.useState('')
   const [companyName, setCompanyName] = React.useState('')
@@ -279,18 +253,21 @@ function HomeContent() {
   const [showGenerateDialog, setShowGenerateDialog] = React.useState(false)
   const [locationError, setLocationError] = React.useState('')
 
+  const previousStatusRef = React.useRef<JobStatus | null>(null)
+
   const historyQuery = useQuery({
-    queryKey: ['jobs-history'],
-    queryFn: () => getJobsHistory(1, 8),
+    queryKey: ['jobs-history', accessToken],
+    queryFn: () => getJobsHistory(accessToken, 1, 8),
+    enabled: Boolean(accessToken),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
   })
 
   const jobQuery = useQuery({
-    queryKey: ['job', activeJobId],
-    queryFn: () => getJob(activeJobId as string),
-    enabled: Boolean(activeJobId),
+    queryKey: ['job', activeJobId, accessToken],
+    queryFn: () => getJob(accessToken, activeJobId as string),
+    enabled: Boolean(activeJobId && accessToken),
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
     retry: 2,
@@ -299,6 +276,13 @@ function HomeContent() {
       const status = query.state.data?.status
       return status === 'PENDING' || status === 'PROCESSING' ? 2000 : false
     },
+  })
+
+  const subscriptionQuery = useQuery({
+    queryKey: ['subscription-status', accessToken],
+    queryFn: () => getCurrentSubscription(accessToken),
+    enabled: Boolean(accessToken),
+    staleTime: 30_000,
   })
 
   const uploadMutation = useMutation({
@@ -312,13 +296,12 @@ function HomeContent() {
       location?: string
       instructions?: string
       companyName?: string
-    }) => uploadJob(file, location, instructions, companyName),
+    }) => uploadJob(accessToken, file, location, instructions, companyName),
     onMutate: async () => {
       setGenerationMode('upload')
       setCurrentStatus('PENDING')
       setPostText('')
       setAiContent(null)
-      setRefineActivity([])
       setShowRefinePanel(false)
     },
     onSuccess: async data => {
@@ -326,7 +309,7 @@ function HomeContent() {
       setCurrentStatus(data.status)
       toast.success('Image uploaded. AI processing started.')
       void queryClient.refetchQueries({
-        queryKey: ['job', data.jobId],
+        queryKey: ['job', data.jobId, accessToken],
         exact: true,
       })
       await queryClient.invalidateQueries({ queryKey: ['jobs-history'] })
@@ -337,7 +320,7 @@ function HomeContent() {
         setActiveJobId(duplicateJobId)
         toast.info('This image already exists. Loading the existing job.')
         void queryClient.refetchQueries({
-          queryKey: ['job', duplicateJobId],
+          queryKey: ['job', duplicateJobId, accessToken],
           exact: true,
         })
         return
@@ -356,34 +339,24 @@ function HomeContent() {
       setCurrentStatus('PROCESSING')
     },
     onSuccess: async (data, variables) => {
-      const parsed = parseAiGeneratedContent(data.ai_response)
+      const latestAiResponse =
+        data.chatHistory?.[data.chatHistory.length - 1]?.ai_response ??
+        data.ai_response
+
+      const parsed = parseAiGeneratedContent(latestAiResponse)
       if (parsed) {
         setAiContent(parsed)
         setPostText(
           parsed.gmbPost || parsed.caption || parsed.description || '',
         )
       } else {
-        setPostText(data.ai_response)
+        setPostText('')
       }
       setCurrentStatus('DONE')
       setFieldInputs(previous => ({
         ...previous,
         [variables.update_field_name as RefineFieldKey]: '',
       }))
-      setRefineActivity(previous => [
-        {
-          field: variables.update_field_name as RefineFieldKey,
-          instruction: variables.user_instruction,
-          response:
-            parsed?.gmbPost ||
-            parsed?.caption ||
-            parsed?.description ||
-            data.ai_response,
-          createdAt: new Date().toISOString(),
-        },
-        ...previous,
-      ])
-
       toast.success(
         `Updated ${getRefineFieldLabel(variables.update_field_name as RefineFieldKey)}`,
       )
@@ -402,7 +375,7 @@ function HomeContent() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: deleteJob,
+    mutationFn: (jobId: string) => deleteJob(accessToken, jobId),
     onSuccess: async (_, jobId) => {
       toast.success('History item deleted')
       await queryClient.invalidateQueries({ queryKey: ['jobs-history'] })
@@ -414,7 +387,6 @@ function HomeContent() {
         setCurrentStatus(null)
         setPostText('')
         setAiContent(null)
-        setRefineActivity([])
         setShowRefinePanel(false)
       }
     },
@@ -427,11 +399,23 @@ function HomeContent() {
     const job = jobQuery.data
     if (!job) return
 
+    const prevStatus = previousStatusRef.current
+    previousStatusRef.current = job.status
+
     setCurrentStatus(job.status)
     setUploadedImage(getPreferredJobImageUrl(job))
 
     if (job.status === 'DONE') {
-      const parsed = parseAiGeneratedContent(job.aiRawResponse)
+      if (prevStatus && prevStatus !== 'DONE') {
+        void queryClient.invalidateQueries({ queryKey: ['jobs-history'] })
+      }
+
+      const latestAiResponse =
+        job.latestAiResponse ??
+        job.latestChatHistory?.ai_response ??
+        job.aiRawResponse
+
+      const parsed = parseAiGeneratedContent(latestAiResponse)
       setAiContent(parsed)
       setPostText(
         parsed?.gmbPost || parsed?.caption || parsed?.description || '',
@@ -441,7 +425,7 @@ function HomeContent() {
     if (job.status === 'FAILED') {
       toast.error(job.failureReason || 'AI processing failed')
     }
-  }, [jobQuery.data])
+  }, [jobQuery.data, queryClient])
 
   React.useEffect(() => {
     if (!jobQuery.isError) return
@@ -465,11 +449,11 @@ function HomeContent() {
       setGenerationMode('upload')
       setShowRefinePanel(false)
       void queryClient.refetchQueries({
-        queryKey: ['job', item._id],
+        queryKey: ['job', item._id, accessToken],
         exact: true,
       })
     },
-    [queryClient],
+    [accessToken, queryClient],
   )
 
   const resetComposerState = React.useCallback(() => {
@@ -483,7 +467,6 @@ function HomeContent() {
     setShowRefinePanel(false)
     setFieldInputs(createInitialFieldInputs())
     setActiveFieldKey(null)
-    setRefineActivity([])
     setCopied(false)
     setDeleteDialogJobId(null)
   }, [])
@@ -513,7 +496,6 @@ function HomeContent() {
     setCurrentStatus(null)
     setPostText('')
     setAiContent(null)
-    setRefineActivity([])
     setShowRefinePanel(false)
   }, [
     activeJobId,
@@ -533,11 +515,16 @@ function HomeContent() {
     setActiveJobId(null)
     setPostText('')
     setAiContent(null)
-    setRefineActivity([])
     setShowRefinePanel(false)
   }
 
   const handleGenerate = () => {
+    if (!subscriptionQuery.data?.hasActiveSubscription) {
+      toast.error('Please subscribe to generate GMB content.')
+      router.push('/subscription')
+      return
+    }
+
     if (!selectedFile) {
       toast.error('Upload an image first')
       return
@@ -552,6 +539,12 @@ function HomeContent() {
   }
 
   const handleCopy = async () => {
+    if (!subscriptionQuery.data?.hasActiveSubscription) {
+      toast.error('Please subscribe to copy generated posts.')
+      router.push('/subscription')
+      return
+    }
+
     if (!displayPostText) return
     await navigator.clipboard.writeText(displayPostText)
     setCopied(true)
@@ -559,6 +552,12 @@ function HomeContent() {
   }
 
   const handleCopyGmbPost = async () => {
+    if (!subscriptionQuery.data?.hasActiveSubscription) {
+      toast.error('Please subscribe to copy generated posts.')
+      router.push('/subscription')
+      return
+    }
+
     if (!aiContent?.gmbPost) return
     await navigator.clipboard.writeText(aiContent.gmbPost)
     setCopied(true)
@@ -566,6 +565,12 @@ function HomeContent() {
   }
 
   const handleCopyFullPackage = async () => {
+    if (!subscriptionQuery.data?.hasActiveSubscription) {
+      toast.error('Please subscribe to copy the full content pack.')
+      router.push('/subscription')
+      return
+    }
+
     if (!aiContent) return
     await navigator.clipboard.writeText(formatAiContentForCopy(aiContent))
     setCopied(true)
@@ -616,6 +621,12 @@ function HomeContent() {
       return
     }
 
+    if (!subscriptionQuery.data?.hasActiveSubscription) {
+      toast.error('Please subscribe to refine generated content.')
+      router.push('/subscription')
+      return
+    }
+
     if (currentStatus !== 'DONE') {
       toast.error('Wait until the current job finishes processing.')
       return
@@ -629,12 +640,16 @@ function HomeContent() {
 
     refineMutation.mutate({
       jobId: activeJobId,
+      accessToken,
       update_field_name: field,
       user_instruction: instruction,
     })
   }
 
   const historyItems = historyQuery.data?.jobs ?? []
+  const hasActiveSubscription = Boolean(
+    subscriptionQuery.data?.hasActiveSubscription,
+  )
   const isBusy =
     uploadMutation.isPending ||
     refineMutation.isPending ||
@@ -662,27 +677,22 @@ function HomeContent() {
     textarea.style.height = `${textarea.scrollHeight}px`
   }, [displayPostText])
 
-  React.useEffect(() => {
-    if (!aiContent) return
-
-    setFieldInputs(previous => ({
-      ...previous,
-      title: getRefineFieldValue('title', aiContent),
-      caption: getRefineFieldValue('caption', aiContent),
-      SEO_keywords: getRefineFieldValue('SEO_keywords', aiContent),
-      description: getRefineFieldValue('description', aiContent),
-      assign_location: getRefineFieldValue('assign_location', aiContent),
-      gmb_post: getRefineFieldValue('gmb_post', aiContent),
-      file_name: getRefineFieldValue('file_name', aiContent),
-    }))
-  }, [aiContent])
-
   const HistoryList = () => (
     <div className="space-y-3">
       {historyQuery.isLoading ? (
         <div className="space-y-3 rounded-3xl border bg-white p-3 sm:p-4">
-          <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
-          <p className="text-sm text-slate-500">Loading recent jobs...</p>
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="flex items-start gap-3">
+              <Skeleton className="h-14 w-14 rounded-xl" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-5 w-4/5 rounded-full" />
+                <div className="flex gap-2">
+                  <Skeleton className="h-5 w-20 rounded-full" />
+                  <Skeleton className="h-5 w-24 rounded-full" />
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       ) : historyQuery.isError ? (
         <div className="rounded-3xl border bg-white p-3 text-sm text-rose-600 sm:p-4">
@@ -760,6 +770,16 @@ function HomeContent() {
 
       <main className="mx-auto grid max-w-7xl items-start gap-4 px-3 py-4 sm:px-4 md:grid-cols-5 md:gap-6 md:px-6 md:py-6">
         <section className="flex w-full flex-col gap-4 md:col-span-3">
+          {!hasActiveSubscription ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm">
+              Subscription is required for generating, refining, and copying
+              GMB content.{' '}
+              <Link href="/subscription" className="font-semibold underline">
+                Choose a plan
+              </Link>
+            </div>
+          ) : null}
+
           <Card className="block h-auto min-h-fit w-full overflow-visible rounded-2xl border-slate-200 p-3 shadow-sm transition-all duration-300 hover:shadow-md box-border sm:p-4 md:p-5">
             <CardHeader className="p-0">
               <CardTitle className="text-lg sm:text-xl">
@@ -782,7 +802,7 @@ function HomeContent() {
                   <div className="flex flex-col items-center justify-center gap-3 text-center min-h-[200px] w-full">
                     <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-slate-500 shadow-sm transition group-hover:scale-105">
                       {uploadMutation.isPending ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
+                        <Skeleton className="h-6 w-6 rounded-full" />
                       ) : (
                         <ImagePlus className="h-5 w-5" />
                       )}
@@ -833,7 +853,7 @@ function HomeContent() {
                 className="w-full rounded-xl bg-[#4285F4] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#3777dd] disabled:opacity-50"
               >
                 {uploadMutation.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Skeleton className="mr-2 h-4 w-4 rounded-full bg-white/40" />
                 ) : (
                   <Sparkles className="mr-2 h-4 w-4" />
                 )}
@@ -856,7 +876,9 @@ function HomeContent() {
             </CardHeader>
             <CardContent className="space-y-4 p-0">
               {isRefining && aiContent ? (
-                <AiThinkingLoader active mode="refine" className="mb-4" />
+                <div className="rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-700">
+                  Updating the current response with your latest edit...
+                </div>
               ) : null}
 
               {shouldShowThinkingLoader ? (
@@ -909,61 +931,22 @@ function HomeContent() {
               {showRefinePanel && (
                 <div className="space-y-3 rounded-3xl border bg-slate-50 p-3 animate-in fade-in slide-in-from-bottom-2 duration-300 sm:p-4">
                   <div className="space-y-3">
-                    {REFINE_FIELDS.filter(
-                      field => !('hidden' in field && field.hidden),
-                    ).map(field => (
-                      <RefineFieldCard
-                        key={field.key}
-                        field={field}
-                        value={fieldInputs[field.key]}
-                        onChange={value =>
-                          setFieldInputs(previous => ({
-                            ...previous,
-                            [field.key]: value,
-                          }))
-                        }
-                        onSubmit={() => submitRefineField(field.key)}
-                        disabled={
-                          refineMutation.isPending || currentStatus !== 'DONE'
-                        }
-                        pending={activeFieldKey === field.key}
-                      />
-                    ))}
+                    <RefineFieldCard
+                      field={REFINE_FIELDS.find(f => f.key === 'gmb_post')!}
+                      value={fieldInputs.gmb_post}
+                      onChange={value =>
+                        setFieldInputs(previous => ({
+                          ...previous,
+                          gmb_post: value,
+                        }))
+                      }
+                      onSubmit={() => submitRefineField('gmb_post')}
+                      disabled={
+                        refineMutation.isPending || currentStatus !== 'DONE'
+                      }
+                      pending={activeFieldKey === 'gmb_post'}
+                    />
                   </div>
-
-                  {!!refineActivity.length && (
-                    <div className="rounded-3xl border border-slate-200 bg-white p-3 sm:p-4">
-                      <p className="text-sm font-semibold text-slate-900">
-                        Recent refine activity
-                      </p>
-                      <div className="mt-3 space-y-3">
-                        {refineActivity.map(entry => (
-                          <div
-                            key={`${entry.field}-${entry.createdAt}`}
-                            className="rounded-2xl bg-slate-50 px-3 py-3 sm:px-4"
-                          >
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge
-                                variant="secondary"
-                                className="rounded-full px-2.5 py-0.5 text-xs"
-                              >
-                                {getRefineFieldLabel(entry.field)}
-                              </Badge>
-                              <span className="text-sm text-slate-500">
-                                {new Date(entry.createdAt).toLocaleString()}
-                              </span>
-                            </div>
-                            <p className="mt-2 text-sm leading-6 text-slate-700">
-                              {entry.instruction}
-                            </p>
-                            <p className="mt-2 rounded-xl bg-white px-3 py-2 text-sm leading-6 text-slate-600 shadow-sm">
-                              {entry.response}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
             </CardContent>
@@ -1052,10 +1035,10 @@ function HomeContent() {
           <Card className="relative z-0 h-auto min-h-fit w-full shrink-0 overflow-visible rounded-2xl border-slate-200 p-3 shadow-sm transition-all duration-300 hover:shadow-md box-border sm:p-4">
             <CardHeader className="p-0">
               <CardTitle className="text-lg sm:text-xl">
-                Live Post Preview
+                Image Metadata
               </CardTitle>
               <CardDescription className="pr-1 text-sm leading-6 sm:pr-2 sm:text-[15px]">
-                How this appears on Google Business Profile
+                AI-generated metadata for the uploaded image
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0">
@@ -1077,20 +1060,147 @@ function HomeContent() {
                 {aiContent ? (
                   <div className="mt-4 space-y-4">
                     <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
-                      <h3 className="text-base font-semibold text-slate-900 sm:text-lg">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
+                          Image Title
+                        </p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="h-7 w-7 text-slate-400 hover:text-[#4285F4]"
+                          onClick={() =>
+                            setRightActiveFieldKey(
+                              rightActiveFieldKey === 'title' ? null : 'title',
+                            )
+                          }
+                          disabled={isBusy || currentStatus !== 'DONE'}
+                          title="Refine image title"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                      <h3 className="mt-2 text-base font-semibold text-slate-900 sm:text-lg">
                         {aiContent.title || 'Image Title'}
                       </h3>
-                      <p className="mt-3 text-sm leading-6 text-slate-600">
+                      {rightActiveFieldKey === 'title' && (
+                        <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                          <RefineFieldCard
+                            field={REFINE_FIELDS.find(f => f.key === 'title')!}
+                            value={fieldInputs.title}
+                            onChange={value =>
+                              setFieldInputs(previous => ({
+                                ...previous,
+                                title: value,
+                              }))
+                            }
+                            onSubmit={() => submitRefineField('title')}
+                            disabled={
+                              refineMutation.isPending ||
+                              currentStatus !== 'DONE'
+                            }
+                            pending={activeFieldKey === 'title'}
+                          />
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between mt-3">
+                        <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
+                          Image Caption
+                        </p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="h-7 w-7 text-slate-400 hover:text-[#4285F4] shrink-0"
+                          onClick={() =>
+                            setRightActiveFieldKey(
+                              rightActiveFieldKey === 'caption'
+                                ? null
+                                : 'caption',
+                            )
+                          }
+                          disabled={isBusy || currentStatus !== 'DONE'}
+                          title="Refine image caption"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">
                         {aiContent.caption ||
                           'No caption returned by the AI service.'}
                       </p>
+                      {rightActiveFieldKey === 'caption' && (
+                        <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                          <RefineFieldCard
+                            field={
+                              REFINE_FIELDS.find(f => f.key === 'caption')!
+                            }
+                            value={fieldInputs.caption}
+                            onChange={value =>
+                              setFieldInputs(previous => ({
+                                ...previous,
+                                caption: value,
+                              }))
+                            }
+                            onSubmit={() => submitRefineField('caption')}
+                            disabled={
+                              refineMutation.isPending ||
+                              currentStatus !== 'DONE'
+                            }
+                            pending={activeFieldKey === 'caption'}
+                          />
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid gap-3">
                       <div className="rounded-2xl border bg-white p-3">
-                        <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
-                          Image SEO Keywords
-                        </p>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
+                            Image Keywords
+                          </p>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className="h-7 w-7 text-slate-400 hover:text-[#4285F4]"
+                            onClick={() =>
+                              setRightActiveFieldKey(
+                                rightActiveFieldKey === 'SEO_keywords'
+                                  ? null
+                                  : 'SEO_keywords',
+                              )
+                            }
+                            disabled={isBusy || currentStatus !== 'DONE'}
+                            title="Refine image keywords"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        {rightActiveFieldKey === 'SEO_keywords' && (
+                          <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <RefineFieldCard
+                              field={
+                                REFINE_FIELDS.find(
+                                  f => f.key === 'SEO_keywords',
+                                )!
+                              }
+                              value={fieldInputs.SEO_keywords}
+                              onChange={value =>
+                                setFieldInputs(previous => ({
+                                  ...previous,
+                                  SEO_keywords: value,
+                                }))
+                              }
+                              onSubmit={() => submitRefineField('SEO_keywords')}
+                              disabled={
+                                refineMutation.isPending ||
+                                currentStatus !== 'DONE'
+                              }
+                              pending={activeFieldKey === 'SEO_keywords'}
+                            />
+                          </div>
+                        )}
                         <div className="mt-3 flex flex-wrap gap-2">
                           {aiContent.keywords.length ? (
                             aiContent.keywords.map(keyword => (
@@ -1111,9 +1221,52 @@ function HomeContent() {
                       </div>
 
                       <div className="rounded-2xl border bg-white p-3">
-                        <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
-                          Image Description
-                        </p>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
+                            Image Description
+                          </p>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className="h-7 w-7 text-slate-400 hover:text-[#4285F4]"
+                            onClick={() =>
+                              setRightActiveFieldKey(
+                                rightActiveFieldKey === 'description'
+                                  ? null
+                                  : 'description',
+                              )
+                            }
+                            disabled={isBusy || currentStatus !== 'DONE'}
+                            title="Refine image description"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        {rightActiveFieldKey === 'description' && (
+                          <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <RefineFieldCard
+                              field={
+                                REFINE_FIELDS.find(
+                                  f => f.key === 'description',
+                                )!
+                              }
+                              value={fieldInputs.description}
+                              onChange={value =>
+                                setFieldInputs(previous => ({
+                                  ...previous,
+                                  description: value,
+                                }))
+                              }
+                              onSubmit={() => submitRefineField('description')}
+                              disabled={
+                                refineMutation.isPending ||
+                                currentStatus !== 'DONE'
+                              }
+                              pending={activeFieldKey === 'description'}
+                            />
+                          </div>
+                        )}
                         <p className="mt-2 text-sm leading-6 text-slate-700">
                           {aiContent.description ||
                             'No description returned by the AI service.'}
@@ -1121,24 +1274,53 @@ function HomeContent() {
                       </div>
 
                       <div className="rounded-2xl border bg-white p-3">
-                        <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
-                          Google Business Profile Post
-                        </p>
-                        <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 whitespace-pre-wrap text-slate-700">
-                          {aiContent.gmbPost ||
-                            'No GMB post returned by the AI service.'}
-                        </div>
-                      </div>
-
-                      <div className="grid gap-3 md:grid-cols-1">
-                        <div className="rounded-2xl border bg-white p-3">
+                        <div className="flex items-center justify-between">
                           <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
-                            Image File Name
+                            Image Filename
                           </p>
-                          <p className="mt-2 text-sm leading-6 text-slate-700">
-                            {aiContent.fileName || 'Not provided'}
-                          </p>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className="h-7 w-7 text-slate-400 hover:text-[#4285F4]"
+                            onClick={() =>
+                              setRightActiveFieldKey(
+                                rightActiveFieldKey === 'file_name'
+                                  ? null
+                                  : 'file_name',
+                              )
+                            }
+                            disabled={isBusy || currentStatus !== 'DONE'}
+                            title="Refine image filename"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
                         </div>
+                        {rightActiveFieldKey === 'file_name' && (
+                          <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <RefineFieldCard
+                              field={
+                                REFINE_FIELDS.find(f => f.key === 'file_name')!
+                              }
+                              value={fieldInputs.file_name}
+                              onChange={value =>
+                                setFieldInputs(previous => ({
+                                  ...previous,
+                                  file_name: value,
+                                }))
+                              }
+                              onSubmit={() => submitRefineField('file_name')}
+                              disabled={
+                                refineMutation.isPending ||
+                                currentStatus !== 'DONE'
+                              }
+                              pending={activeFieldKey === 'file_name'}
+                            />
+                          </div>
+                        )}
+                        <p className="mt-2 text-sm leading-6 text-slate-700">
+                          {aiContent.fileName || 'Not provided'}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -1298,7 +1480,7 @@ function HomeContent() {
               className="rounded-xl bg-[#4285F4] px-6 hover:bg-[#3777dd]"
             >
               {uploadMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Skeleton className="mr-2 h-4 w-4 rounded-full bg-white/40" />
               ) : (
                 <Sparkles className="mr-2 h-4 w-4" />
               )}
@@ -1339,7 +1521,7 @@ function HomeContent() {
               disabled={deleteMutation.isPending || !deleteDialogJobId}
             >
               {deleteMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Skeleton className="mr-2 h-4 w-4 rounded-full bg-white/40" />
               ) : (
                 <Trash2 className="mr-2 h-4 w-4" />
               )}

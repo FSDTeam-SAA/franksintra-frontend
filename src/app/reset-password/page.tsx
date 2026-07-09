@@ -3,13 +3,14 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { ArrowRight, Eye, EyeOff, KeyRound, ShieldCheck, Loader2 } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, KeyRound, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Skeleton } from '@/components/ui/skeleton'
 import { resetPassword, verifyResetCode } from '@/lib/auth'
 
 function ResetPasswordForm() {
@@ -189,9 +190,18 @@ export default function ResetPasswordPage() {
   return (
     <React.Suspense
       fallback={
-        <div className="min-h-screen bg-[radial-gradient(circle_at_top_right,_rgba(66,133,244,0.14),_transparent_35%),linear-gradient(180deg,_#f8fbff_0%,_#eef4ff_100%)] flex items-center justify-center text-slate-500">
-          <Loader2 className="h-6 w-6 animate-spin text-[#4285F4] mr-2" />
-          Loading...
+        <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_right,_rgba(66,133,244,0.14),_transparent_35%),linear-gradient(180deg,_#f8fbff_0%,_#eef4ff_100%)] px-4">
+          <div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white/95 p-6 shadow-[0_25px_80px_rgba(15,23,42,0.12)]">
+            <Skeleton className="h-12 w-12 rounded-2xl" />
+            <Skeleton className="mt-5 h-7 w-48 rounded-full" />
+            <Skeleton className="mt-3 h-4 w-64 rounded-full" />
+            <div className="mt-6 space-y-4">
+              <Skeleton className="h-10 w-full rounded-xl" />
+              <Skeleton className="h-10 w-full rounded-xl" />
+              <Skeleton className="h-10 w-full rounded-xl" />
+              <Skeleton className="h-12 w-full rounded-2xl" />
+            </div>
+          </div>
         </div>
       }
     >
@@ -199,4 +209,3 @@ export default function ResetPasswordPage() {
     </React.Suspense>
   )
 }
-
