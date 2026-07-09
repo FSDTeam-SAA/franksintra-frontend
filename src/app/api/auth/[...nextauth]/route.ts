@@ -11,8 +11,36 @@ const authOptions: NextAuthOptions = {
       credentials: {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
+        token: { label: 'Token', type: 'text' },
+        refreshToken: { label: 'RefreshToken', type: 'text' },
+        isGoogle: { label: 'IsGoogle', type: 'text' },
       },
       async authorize(credentials) {
+        if (credentials?.isGoogle === 'true' && credentials?.token) {
+          try {
+            const response = await axiosInstance.get('/user/me', {
+              headers: {
+                Authorization: `Bearer ${credentials.token}`,
+              },
+            })
+            const user = response.data?.data
+            if (!user) {
+              return null
+            }
+            return {
+              id: user._id,
+              name: user.name,
+              email: user.email,
+              role: user.role,
+              image: user.profileImage ?? null,
+              accessToken: credentials.token,
+              refreshToken: credentials.refreshToken || '',
+            } as any
+          } catch {
+            return null
+          }
+        }
+
         const email = credentials?.email?.trim()
         const password = credentials?.password
 

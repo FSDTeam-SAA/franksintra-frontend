@@ -2,13 +2,15 @@
 
 import * as React from 'react'
 import Image from 'next/image'
-import { Eye, Loader2, Trash2 } from 'lucide-react'
+import { Eye, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { AppHeader } from '@/components/gbp/AppHeader'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Card,
   CardContent,
@@ -63,21 +65,51 @@ function getStatusBadgeClassName(status: JobHistoryItem['status']) {
   }
 }
 
+function HistoryRowsSkeleton() {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <div
+          key={index}
+          className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:p-4"
+        >
+          <Skeleton className="h-24 w-full rounded-2xl sm:h-20 sm:w-20" />
+          <div className="min-w-0 flex-1 space-y-3">
+            <Skeleton className="h-5 w-3/5 rounded-full" />
+            <div className="flex gap-2">
+              <Skeleton className="h-5 w-28 rounded-full" />
+              <Skeleton className="h-5 w-36 rounded-full" />
+            </div>
+            <Skeleton className="h-6 w-24 rounded-full" />
+          </div>
+          <div className="flex gap-2 sm:flex-col">
+            <Skeleton className="h-10 w-24 rounded-xl" />
+            <Skeleton className="h-10 w-24 rounded-xl" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function HistoryPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
+  const { data: session } = useSession()
+  const accessToken = session?.accessToken ?? ''
   const [page, setPage] = React.useState(1)
   const [deleteTarget, setDeleteTarget] = React.useState<JobHistoryItem | null>(
     null,
   )
 
   const historyQuery = useQuery({
-    queryKey: ['jobs-history', page],
-    queryFn: () => getJobsHistory(page, PAGE_SIZE),
+    queryKey: ['jobs-history', page, accessToken],
+    queryFn: () => getJobsHistory(accessToken, page, PAGE_SIZE),
+    enabled: Boolean(accessToken),
   })
 
   const deleteMutation = useMutation({
-    mutationFn: deleteJob,
+    mutationFn: (jobId: string) => deleteJob(accessToken, jobId),
     onSuccess: async () => {
       toast.success('History item deleted')
       setDeleteTarget(null)
@@ -192,12 +224,7 @@ export default function HistoryPage() {
           </CardHeader>
           <CardContent className="space-y-3 p-3 sm:p-4">
             {historyQuery.isLoading ? (
-              <div className="flex min-h-[240px] items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50">
-                <div className="flex items-center gap-3 text-slate-500">
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  Loading history...
-                </div>
-              </div>
+              <HistoryRowsSkeleton />
             ) : historyQuery.isError ? (
               <div className="rounded-3xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
                 Failed to load job history.
@@ -206,12 +233,12 @@ export default function HistoryPage() {
               jobs.map(job => (
                 <div
                   key={job._id}
-                  className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md sm:flex-row sm:items-center sm:p-4"
+                  className="group/row grid grid-cols-1 gap-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-blue-200 hover:shadow-lg sm:grid-cols-[80px_1fr_120px_auto] sm:items-center sm:gap-6"
                 >
                   <button
                     type="button"
                     onClick={() => router.push(`/?historyJobId=${job._id}`)}
-                    className="group relative h-24 w-full shrink-0 overflow-hidden rounded-2xl border bg-slate-100 sm:h-20 sm:w-20"
+                    className="group relative h-40 w-full shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 sm:h-20 sm:w-20"
                     aria-label={`Open ${getJobDisplayName(job)} in home`}
                   >
                     <Image
@@ -219,45 +246,44 @@ export default function HistoryPage() {
                       alt={job.originalFilename}
                       fill
                       unoptimized
-                      className="object-cover transition duration-300 group-hover:scale-105"
+                      className="object-cover transition-transform duration-500 group-hover:scale-110"
                     />
+                    <div className="absolute inset-0 bg-black/0 transition-colors duration-300 group-hover:bg-black/10" />
                   </button>
 
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-[15px] font-semibold text-slate-900 sm:text-base">
-                          {getJobDisplayName(job)}
-                        </p>
-                        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                          <span>{formatJobDate(job.createdAt)}</span>
-                          <span>•</span>
-                          <span>Updated {formatJobDate(job.updatedAt)}</span>
-                        </div>
-                      </div>
-                      <Badge
-                        variant="secondary"
-                        className={cn(
-                          'rounded-full px-3 py-1 text-xs font-medium',
-                          getStatusBadgeClassName(job.status),
-                        )}
-                      >
-                        {getHistoryStatusLabel(job.status)}
-                      </Badge>
+                  <div className="min-w-0 space-y-1.5">
+                    <p className="truncate text-base font-semibold text-slate-900 transition-colors duration-200 group-hover/row:text-blue-600">
+                      {getJobDisplayName(job)}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 sm:text-sm">
+                      <span>{formatJobDate(job.createdAt)}</span>
+                      <span className="hidden text-slate-300 sm:inline">•</span>
+                      <span>Updated {formatJobDate(job.updatedAt)}</span>
                     </div>
-
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-600">
-                      <span className="rounded-full bg-slate-100 px-3 py-1">
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <span className="rounded-full bg-slate-100 px-2.5 py-0.5 font-mono text-[11px] font-medium tracking-wide">
                         ID: {job._id.slice(-8)}
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex shrink-0 flex-row gap-2 sm:flex-col">
+                  <div className="flex items-center sm:justify-center">
+                    <Badge
+                      variant="secondary"
+                      className={cn(
+                        'rounded-full px-3 py-1 text-xs font-medium tracking-wide shadow-sm',
+                        getStatusBadgeClassName(job.status),
+                      )}
+                    >
+                      {getHistoryStatusLabel(job.status)}
+                    </Badge>
+                  </div>
+
+                  <div className="flex shrink-0 flex-row gap-2 sm:justify-end">
                     <Button
                       type="button"
                       variant="outline"
-                      className="rounded-xl px-4"
+                      className="flex-1 rounded-xl px-4 transition-colors hover:bg-blue-50 hover:text-blue-700 sm:flex-initial"
                       onClick={() => router.push(`/?historyJobId=${job._id}`)}
                     >
                       <Eye className="mr-2 h-4 w-4" />
@@ -266,13 +292,13 @@ export default function HistoryPage() {
                     <Button
                       type="button"
                       variant="destructive"
-                      className="rounded-xl px-4"
+                      className="flex-1 rounded-xl px-4 sm:flex-initial"
                       onClick={() => setDeleteTarget(job)}
                       disabled={deleteMutation.isPending}
                     >
                       {deleteMutation.isPending &&
                       deleteTarget?._id === job._id ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        <Skeleton className="mr-2 h-4 w-4 rounded-full bg-white/40" />
                       ) : (
                         <Trash2 className="mr-2 h-4 w-4" />
                       )}
@@ -289,7 +315,20 @@ export default function HistoryPage() {
           </CardContent>
         </Card>
 
-        {renderPagination()}
+        {totalPages > 1 && (
+          <div className="mt-8 flex flex-col items-center justify-between gap-4 sm:flex-row">
+            <p className="text-sm text-slate-500">
+              Showing <span className="font-medium text-slate-900">{(page - 1) * PAGE_SIZE + 1}</span> to{' '}
+              <span className="font-medium text-slate-900">
+                {Math.min(page * PAGE_SIZE, paginationInfo?.total ?? 0)}
+              </span>{' '}
+              of <span className="font-medium text-slate-900">{paginationInfo?.total ?? 0}</span> jobs
+            </p>
+            <div className="mx-0 w-auto">
+              {renderPagination()}
+            </div>
+          </div>
+        )}
       </main>
 
       <Dialog
@@ -326,7 +365,7 @@ export default function HistoryPage() {
               disabled={deleteMutation.isPending || !deleteTarget}
             >
               {deleteMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Skeleton className="mr-2 h-4 w-4 rounded-full bg-white/40" />
               ) : (
                 <Trash2 className="mr-2 h-4 w-4" />
               )}
