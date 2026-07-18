@@ -25,7 +25,7 @@ export default function PaymentCancelPage() {
             </h1>
             
             <p className="mb-8 text-base text-slate-600">
-              Your checkout process was interrupted. No charges were made. You can try again whenever you're ready.
+              Your checkout process was interrupted. No charges were made. You can try again whenever you&apos;re ready.
             </p>
 
             <div className="flex w-full flex-col gap-3 sm:flex-row">

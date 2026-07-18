@@ -50,10 +50,11 @@ export type JobRecord = JobHistoryItem & {
 export type JobsHistoryResponse = {
   jobs: JobHistoryItem[]
   paginationInfo?: {
-    total: number
-    page: number
-    limit: number
+    currentPage: number
+    totalData: number
     totalPages: number
+    hasNextPage: boolean
+    hasPrevPage: boolean
   }
 }
 

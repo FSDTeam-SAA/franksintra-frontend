@@ -8,6 +8,7 @@ import { useSession } from 'next-auth/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { AppHeader } from '@/components/gbp/AppHeader'
+import { JobHistoryPagination } from '@/components/gbp/JobHistoryPagination'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -26,15 +27,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination'
 import { cn } from '@/lib/utils'
 import {
   deleteJob,
@@ -106,6 +98,7 @@ export default function HistoryPage() {
     queryKey: ['jobs-history', page, accessToken],
     queryFn: () => getJobsHistory(accessToken, page, PAGE_SIZE),
     enabled: Boolean(accessToken),
+    placeholderData: previousData => previousData,
   })
 
   const deleteMutation = useMutation({
@@ -125,90 +118,16 @@ export default function HistoryPage() {
   const totalPages = Math.max(1, paginationInfo?.totalPages ?? 1)
 
   React.useEffect(() => {
-    if (page > totalPages) {
+    if (paginationInfo && page > totalPages) {
       setPage(totalPages)
     }
-  }, [page, totalPages])
+  }, [page, paginationInfo, totalPages])
 
   React.useEffect(() => {
     if (historyQuery.isError) {
       toast.error(getApiErrorMessage(historyQuery.error))
     }
   }, [historyQuery.error, historyQuery.isError])
-
-  const renderPagination = () => {
-    if (totalPages <= 1) return null
-
-    const visiblePages = new Set<number>()
-    visiblePages.add(1)
-    visiblePages.add(totalPages)
-    visiblePages.add(page)
-    visiblePages.add(Math.max(1, page - 1))
-    visiblePages.add(Math.min(totalPages, page + 1))
-
-    const orderedPages = Array.from(visiblePages)
-      .filter(value => value >= 1 && value <= totalPages)
-      .sort((left, right) => left - right)
-
-    const items: React.ReactNode[] = []
-
-    orderedPages.forEach((value, index) => {
-      const previous = orderedPages[index - 1]
-      if (index > 0 && value - previous > 1) {
-        items.push(
-          <PaginationItem key={`ellipsis-${previous}-${value}`}>
-            <PaginationEllipsis />
-          </PaginationItem>,
-        )
-      }
-
-      items.push(
-        <PaginationItem key={value}>
-          <PaginationLink
-            href="#"
-            size="default"
-            isActive={value === page}
-            onClick={event => {
-              event.preventDefault()
-              setPage(value)
-            }}
-          >
-            {value}
-          </PaginationLink>
-        </PaginationItem>,
-      )
-    })
-
-    return (
-      <Pagination className="mt-6">
-        <PaginationContent>
-          <PaginationItem>
-            <PaginationPrevious
-              href="#"
-              onClick={event => {
-                event.preventDefault()
-                setPage(current => Math.max(1, current - 1))
-              }}
-              className={cn(page <= 1 && 'pointer-events-none opacity-50')}
-            />
-          </PaginationItem>
-          {items}
-          <PaginationItem>
-            <PaginationNext
-              href="#"
-              onClick={event => {
-                event.preventDefault()
-                setPage(current => Math.min(totalPages, current + 1))
-              }}
-              className={cn(
-                page >= totalPages && 'pointer-events-none opacity-50',
-              )}
-            />
-          </PaginationItem>
-        </PaginationContent>
-      </Pagination>
-    )
-  }
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-slate-50 text-[15px] text-slate-900 md:text-base">
@@ -315,20 +234,14 @@ export default function HistoryPage() {
           </CardContent>
         </Card>
 
-        {totalPages > 1 && (
-          <div className="mt-8 flex flex-col items-center justify-between gap-4 sm:flex-row">
-            <p className="text-sm text-slate-500">
-              Showing <span className="font-medium text-slate-900">{(page - 1) * PAGE_SIZE + 1}</span> to{' '}
-              <span className="font-medium text-slate-900">
-                {Math.min(page * PAGE_SIZE, paginationInfo?.total ?? 0)}
-              </span>{' '}
-              of <span className="font-medium text-slate-900">{paginationInfo?.total ?? 0}</span> jobs
-            </p>
-            <div className="mx-0 w-auto">
-              {renderPagination()}
-            </div>
-          </div>
-        )}
+        <JobHistoryPagination
+          className="mt-8"
+          page={page}
+          pageSize={PAGE_SIZE}
+          totalItems={paginationInfo?.totalData ?? 0}
+          totalPages={totalPages}
+          onPageChange={setPage}
+        />
       </main>
 
       <Dialog

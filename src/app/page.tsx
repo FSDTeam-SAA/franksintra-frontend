@@ -24,6 +24,7 @@ import { toast } from 'sonner'
 
 import { AppHeader } from '@/components/gbp/AppHeader'
 import { AiThinkingLoader } from '@/components/gbp/AiThinkingLoader'
+import { JobHistoryPagination } from '@/components/gbp/JobHistoryPagination'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -224,6 +225,7 @@ function HomeContent() {
   const searchParams = useSearchParams()
   const { data: session } = useSession()
   const accessToken = session?.accessToken ?? ''
+  const isAdmin = session?.user?.role === 'ADMIN'
   const postTextareaRef = React.useRef<HTMLTextAreaElement | null>(null)
   const [uploadedImage, setUploadedImage] = React.useState<string | null>(null)
   const [selectedFile, setSelectedFile] = React.useState<File | null>(null)
@@ -252,14 +254,16 @@ function HomeContent() {
   >(null)
   const [showGenerateDialog, setShowGenerateDialog] = React.useState(false)
   const [locationError, setLocationError] = React.useState('')
+  const [historyPage, setHistoryPage] = React.useState(1)
 
   const previousStatusRef = React.useRef<JobStatus | null>(null)
 
   const historyQuery = useQuery({
-    queryKey: ['jobs-history', accessToken],
-    queryFn: () => getJobsHistory(accessToken, 1, 8),
+    queryKey: ['jobs-history', historyPage, accessToken],
+    queryFn: () => getJobsHistory(accessToken, historyPage, 8),
     enabled: Boolean(accessToken),
     staleTime: 30_000,
+    placeholderData: previousData => previousData,
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
   })
@@ -281,9 +285,12 @@ function HomeContent() {
   const subscriptionQuery = useQuery({
     queryKey: ['subscription-status', accessToken],
     queryFn: () => getCurrentSubscription(accessToken),
-    enabled: Boolean(accessToken),
+    enabled: Boolean(accessToken) && !isAdmin,
     staleTime: 30_000,
   })
+
+  const hasFeatureAccess =
+    isAdmin || Boolean(subscriptionQuery.data?.hasActiveSubscription)
 
   const uploadMutation = useMutation({
     mutationFn: ({
@@ -519,7 +526,7 @@ function HomeContent() {
   }
 
   const handleGenerate = () => {
-    if (!subscriptionQuery.data?.hasActiveSubscription) {
+    if (!hasFeatureAccess) {
       toast.error('Please subscribe to generate GMB content.')
       router.push('/subscription')
       return
@@ -539,7 +546,7 @@ function HomeContent() {
   }
 
   const handleCopy = async () => {
-    if (!subscriptionQuery.data?.hasActiveSubscription) {
+    if (!hasFeatureAccess) {
       toast.error('Please subscribe to copy generated posts.')
       router.push('/subscription')
       return
@@ -552,7 +559,7 @@ function HomeContent() {
   }
 
   const handleCopyGmbPost = async () => {
-    if (!subscriptionQuery.data?.hasActiveSubscription) {
+    if (!hasFeatureAccess) {
       toast.error('Please subscribe to copy generated posts.')
       router.push('/subscription')
       return
@@ -565,7 +572,7 @@ function HomeContent() {
   }
 
   const handleCopyFullPackage = async () => {
-    if (!subscriptionQuery.data?.hasActiveSubscription) {
+    if (!hasFeatureAccess) {
       toast.error('Please subscribe to copy the full content pack.')
       router.push('/subscription')
       return
@@ -621,7 +628,7 @@ function HomeContent() {
       return
     }
 
-    if (!subscriptionQuery.data?.hasActiveSubscription) {
+    if (!hasFeatureAccess) {
       toast.error('Please subscribe to refine generated content.')
       router.push('/subscription')
       return
@@ -647,9 +654,8 @@ function HomeContent() {
   }
 
   const historyItems = historyQuery.data?.jobs ?? []
-  const hasActiveSubscription = Boolean(
-    subscriptionQuery.data?.hasActiveSubscription,
-  )
+  const historyPagination = historyQuery.data?.paginationInfo
+  const historyTotalPages = Math.max(1, historyPagination?.totalPages ?? 1)
   const isBusy =
     uploadMutation.isPending ||
     refineMutation.isPending ||
@@ -668,6 +674,12 @@ function HomeContent() {
   )
   const preferredImageUrl =
     getPreferredJobImageUrl(activeJob) || uploadedImage || ''
+
+  React.useEffect(() => {
+    if (historyPagination && historyPage > historyTotalPages) {
+      setHistoryPage(historyTotalPages)
+    }
+  }, [historyPage, historyPagination, historyTotalPages])
 
   React.useEffect(() => {
     const textarea = postTextareaRef.current
@@ -761,6 +773,15 @@ function HomeContent() {
           No backend history yet.
         </div>
       )}
+      <JobHistoryPagination
+        compact
+        className="pt-1"
+        page={historyPage}
+        pageSize={8}
+        totalItems={historyPagination?.totalData ?? 0}
+        totalPages={historyTotalPages}
+        onPageChange={setHistoryPage}
+      />
     </div>
   )
 
@@ -770,7 +791,7 @@ function HomeContent() {
 
       <main className="mx-auto grid max-w-7xl items-start gap-4 px-3 py-4 sm:px-4 md:grid-cols-5 md:gap-6 md:px-6 md:py-6">
         <section className="flex w-full flex-col gap-4 md:col-span-3">
-          {!hasActiveSubscription ? (
+          {!hasFeatureAccess ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm">
               Subscription is required for generating, refining, and copying
               GMB content.{' '}
