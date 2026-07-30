@@ -17,7 +17,6 @@ import {
 } from 'lucide-react'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
-import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -69,7 +68,9 @@ import {
   type ParsedAiContent,
   type JobStatus,
 } from '@/lib/jobs'
-import { getCurrentSubscription } from '@/lib/subscriptions'
+// Subscription access is temporarily disabled. Restore this import when
+// subscription-gated product access is enabled again.
+// import { getCurrentSubscription } from '@/lib/subscriptions'
 
 type HistoryStatus = 'Published' | 'Draft'
 type GenerationMode = 'upload' | 'refine'
@@ -225,7 +226,6 @@ function HomeContent() {
   const searchParams = useSearchParams()
   const { data: session } = useSession()
   const accessToken = session?.accessToken ?? ''
-  const isAdmin = session?.user?.role === 'ADMIN'
   const postTextareaRef = React.useRef<HTMLTextAreaElement | null>(null)
   const [uploadedImage, setUploadedImage] = React.useState<string | null>(null)
   const [selectedFile, setSelectedFile] = React.useState<File | null>(null)
@@ -282,15 +282,16 @@ function HomeContent() {
     },
   })
 
-  const subscriptionQuery = useQuery({
-    queryKey: ['subscription-status', accessToken],
-    queryFn: () => getCurrentSubscription(accessToken),
-    enabled: Boolean(accessToken) && !isAdmin,
-    staleTime: 30_000,
-  })
-
-  const hasFeatureAccess =
-    isAdmin || Boolean(subscriptionQuery.data?.hasActiveSubscription)
+  // Subscription gating is intentionally paused for the GMB workflow.
+  // const isAdmin = session?.user?.role === 'ADMIN'
+  // const subscriptionQuery = useQuery({
+  //   queryKey: ['subscription-status', accessToken],
+  //   queryFn: () => getCurrentSubscription(accessToken),
+  //   enabled: Boolean(accessToken) && !isAdmin,
+  //   staleTime: 30_000,
+  // })
+  // const hasFeatureAccess =
+  //   isAdmin || Boolean(subscriptionQuery.data?.hasActiveSubscription)
 
   const uploadMutation = useMutation({
     mutationFn: ({
@@ -526,11 +527,12 @@ function HomeContent() {
   }
 
   const handleGenerate = () => {
-    if (!hasFeatureAccess) {
-      toast.error('Please subscribe to generate GMB content.')
-      router.push('/subscription')
-      return
-    }
+    // Subscription guard temporarily disabled.
+    // if (!hasFeatureAccess) {
+    //   toast.error('Please subscribe to generate GMB content.')
+    //   router.push('/subscription')
+    //   return
+    // }
 
     if (!selectedFile) {
       toast.error('Upload an image first')
@@ -546,11 +548,12 @@ function HomeContent() {
   }
 
   const handleCopy = async () => {
-    if (!hasFeatureAccess) {
-      toast.error('Please subscribe to copy generated posts.')
-      router.push('/subscription')
-      return
-    }
+    // Subscription guard temporarily disabled.
+    // if (!hasFeatureAccess) {
+    //   toast.error('Please subscribe to copy generated posts.')
+    //   router.push('/subscription')
+    //   return
+    // }
 
     if (!displayPostText) return
     await navigator.clipboard.writeText(displayPostText)
@@ -559,11 +562,12 @@ function HomeContent() {
   }
 
   const handleCopyGmbPost = async () => {
-    if (!hasFeatureAccess) {
-      toast.error('Please subscribe to copy generated posts.')
-      router.push('/subscription')
-      return
-    }
+    // Subscription guard temporarily disabled.
+    // if (!hasFeatureAccess) {
+    //   toast.error('Please subscribe to copy generated posts.')
+    //   router.push('/subscription')
+    //   return
+    // }
 
     if (!aiContent?.gmbPost) return
     await navigator.clipboard.writeText(aiContent.gmbPost)
@@ -572,11 +576,12 @@ function HomeContent() {
   }
 
   const handleCopyFullPackage = async () => {
-    if (!hasFeatureAccess) {
-      toast.error('Please subscribe to copy the full content pack.')
-      router.push('/subscription')
-      return
-    }
+    // Subscription guard temporarily disabled.
+    // if (!hasFeatureAccess) {
+    //   toast.error('Please subscribe to copy the full content pack.')
+    //   router.push('/subscription')
+    //   return
+    // }
 
     if (!aiContent) return
     await navigator.clipboard.writeText(formatAiContentForCopy(aiContent))
@@ -628,11 +633,12 @@ function HomeContent() {
       return
     }
 
-    if (!hasFeatureAccess) {
-      toast.error('Please subscribe to refine generated content.')
-      router.push('/subscription')
-      return
-    }
+    // Subscription guard temporarily disabled.
+    // if (!hasFeatureAccess) {
+    //   toast.error('Please subscribe to refine generated content.')
+    //   router.push('/subscription')
+    //   return
+    // }
 
     if (currentStatus !== 'DONE') {
       toast.error('Wait until the current job finishes processing.')
@@ -791,15 +797,7 @@ function HomeContent() {
 
       <main className="mx-auto grid max-w-7xl items-start gap-4 px-3 py-4 sm:px-4 md:grid-cols-5 md:gap-6 md:px-6 md:py-6">
         <section className="flex w-full flex-col gap-4 md:col-span-3">
-          {!hasFeatureAccess ? (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm">
-              Subscription is required for generating, refining, and copying
-              GMB content.{' '}
-              <Link href="/subscription" className="font-semibold underline">
-                Choose a plan
-              </Link>
-            </div>
-          ) : null}
+          {/* Subscription-required notice temporarily disabled with the guard. */}
 
           <Card className="block h-auto min-h-fit w-full overflow-visible rounded-2xl border-slate-200 p-3 shadow-sm transition-all duration-300 hover:shadow-md box-border sm:p-4 md:p-5">
             <CardHeader className="p-0">
