@@ -11,13 +11,13 @@ import {
   ImagePlus,
   MessageSquare,
   Pencil,
+  Send,
   Sparkles,
   Trash2,
   Wand2,
 } from 'lucide-react'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
-import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -62,6 +62,7 @@ import {
   getPreferredJobImageUrl,
   parseAiGeneratedContent,
   deleteJob,
+  postToGmb,
   refineJob,
   uploadJob,
   type JobHistoryItem,
@@ -395,6 +396,22 @@ function HomeContent() {
     },
   })
 
+  const autoPostMutation = useMutation({
+    mutationFn: ({
+      jobId,
+      locationName,
+    }: {
+      jobId: string
+      locationName: string
+    }) => postToGmb(accessToken, { jobId, locationName }),
+    onSuccess: () => {
+      toast.success('Posted to Google Business Profile')
+    },
+    onError: error => {
+      toast.error(getApiErrorMessage(error))
+    },
+  })
+
   React.useEffect(() => {
     const job = jobQuery.data
     if (!job) return
@@ -519,11 +536,12 @@ function HomeContent() {
   }
 
   const handleGenerate = () => {
-    if (!subscriptionQuery.data?.hasActiveSubscription) {
-      toast.error('Please subscribe to generate GMB content.')
-      router.push('/subscription')
-      return
-    }
+    // Subscription requirement is temporarily disabled for generation.
+    // if (!subscriptionQuery.data?.hasActiveSubscription) {
+    //   toast.error('Please subscribe to generate GMB content.')
+    //   router.push('/subscription')
+    //   return
+    // }
 
     if (!selectedFile) {
       toast.error('Upload an image first')
@@ -575,6 +593,23 @@ function HomeContent() {
     await navigator.clipboard.writeText(formatAiContentForCopy(aiContent))
     setCopied(true)
     setTimeout(() => setCopied(false), 1100)
+  }
+
+  const handleAutoPost = () => {
+    if (!activeJobId) {
+      toast.error('Generate content first')
+      return
+    }
+
+    const locationName =
+      jobQuery.data?.assignLocation?.trim() || assignLocation.trim()
+
+    if (!locationName) {
+      toast.error('A Google Business location is required')
+      return
+    }
+
+    autoPostMutation.mutate({ jobId: activeJobId, locationName })
   }
 
   const handleDownloadImage = async () => {
@@ -647,9 +682,6 @@ function HomeContent() {
   }
 
   const historyItems = historyQuery.data?.jobs ?? []
-  const hasActiveSubscription = Boolean(
-    subscriptionQuery.data?.hasActiveSubscription,
-  )
   const isBusy =
     uploadMutation.isPending ||
     refineMutation.isPending ||
@@ -770,16 +802,6 @@ function HomeContent() {
 
       <main className="mx-auto grid max-w-7xl items-start gap-4 px-3 py-4 sm:px-4 md:grid-cols-5 md:gap-6 md:px-6 md:py-6">
         <section className="flex w-full flex-col gap-4 md:col-span-3">
-          {!hasActiveSubscription ? (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm">
-              Subscription is required for generating, refining, and copying
-              GMB content.{' '}
-              <Link href="/subscription" className="font-semibold underline">
-                Choose a plan
-              </Link>
-            </div>
-          ) : null}
-
           <Card className="block h-auto min-h-fit w-full overflow-visible rounded-2xl border-slate-200 p-3 shadow-sm transition-all duration-300 hover:shadow-md box-border sm:p-4 md:p-5">
             <CardHeader className="p-0">
               <CardTitle className="text-lg sm:text-xl">
@@ -963,7 +985,7 @@ function HomeContent() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 p-0">
-              <div className="grid gap-2 sm:grid-cols-3">
+              <div className="grid gap-2 sm:grid-cols-4">
                 <Button
                   type="button"
                   variant="outline"
@@ -991,6 +1013,19 @@ function HomeContent() {
                 >
                   <ImagePlus className="mr-2 h-4 w-4" />
                   Download Image
+                </Button>
+                <Button
+                  type="button"
+                  className="h-11 rounded-xl bg-[#4285F4] px-4 text-sm hover:bg-[#3777dd] sm:text-[15px]"
+                  onClick={handleAutoPost}
+                  disabled={
+                    !activeJobId ||
+                    currentStatus !== 'DONE' ||
+                    autoPostMutation.isPending
+                  }
+                >
+                  <Send className="mr-2 h-4 w-4" />
+                  {autoPostMutation.isPending ? 'Posting...' : 'Auto Post'}
                 </Button>
               </div>
             </CardContent>
