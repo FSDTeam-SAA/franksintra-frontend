@@ -77,6 +77,18 @@ export type DeleteJobResponse = {
 export type PostToGmbPayload = {
   jobId: string
   locationName: string
+  postText?: string
+}
+
+export type GmbAccount = {
+  name: string
+  accountName?: string
+}
+
+export type GmbLocation = {
+  name: string
+  title?: string
+  postingName: string
 }
 
 export type ParsedAiContent = {
@@ -436,6 +448,36 @@ export async function postToGmb(
   const response = await axiosInstance.post<ApiEnvelope<unknown>>(
     '/gmb/post',
     payload,
+    {
+      headers: authHeaders(accessToken),
+    },
+  )
+
+  return unwrap(response.data)
+}
+
+export async function getGmbAccounts(
+  accessToken: string,
+): Promise<GmbAccount[]> {
+  const response = await axiosInstance.get<ApiEnvelope<GmbAccount[]>>(
+    '/gmb/accounts',
+    {
+      headers: authHeaders(accessToken),
+    },
+  )
+
+  return unwrap(response.data)
+}
+
+export async function getGmbLocations(
+  accessToken: string,
+  accountName: string,
+): Promise<GmbLocation[]> {
+  // The backend route accepts the account ID only; it adds the `accounts/`
+  // prefix before asking Google for locations.
+  const accountId = accountName.replace(/^accounts\//, '')
+  const response = await axiosInstance.get<ApiEnvelope<GmbLocation[]>>(
+    `/gmb/accounts/${encodeURIComponent(accountId)}/locations`,
     {
       headers: authHeaders(accessToken),
     },

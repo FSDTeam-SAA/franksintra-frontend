@@ -56,6 +56,8 @@ import {
   getApiErrorMessage,
   formatAiContentForCopy,
   getDuplicateJobId,
+  getGmbAccounts,
+  getGmbLocations,
   getJob,
   getJobDisplayName,
   getJobsHistory,
@@ -245,6 +247,10 @@ function HomeContent() {
   const [rightActiveFieldKey, setRightActiveFieldKey] =
     React.useState<RefineFieldKey | null>(null)
   const [assignLocation, setAssignLocation] = React.useState('')
+  const [selectedGmbAccountName, setSelectedGmbAccountName] =
+    React.useState('')
+  const [selectedGmbLocationName, setSelectedGmbLocationName] =
+    React.useState('')
   const [preferredInstructions, setPreferredInstructions] = React.useState('')
   const [companyName, setCompanyName] = React.useState('')
   const [copied, setCopied] = React.useState(false)
@@ -284,6 +290,22 @@ function HomeContent() {
     queryFn: () => getCurrentSubscription(accessToken),
     enabled: Boolean(accessToken),
     staleTime: 30_000,
+  })
+
+  const gmbAccountsQuery = useQuery({
+    queryKey: ['gmb-accounts', accessToken],
+    queryFn: () => getGmbAccounts(accessToken),
+    enabled: Boolean(accessToken),
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+  })
+
+  const gmbLocationsQuery = useQuery({
+    queryKey: ['gmb-locations', selectedGmbAccountName, accessToken],
+    queryFn: () => getGmbLocations(accessToken, selectedGmbAccountName),
+    enabled: Boolean(accessToken && selectedGmbAccountName),
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
   })
 
   const uploadMutation = useMutation({
@@ -403,7 +425,12 @@ function HomeContent() {
     }: {
       jobId: string
       locationName: string
-    }) => postToGmb(accessToken, { jobId, locationName }),
+    }) =>
+      postToGmb(accessToken, {
+        jobId,
+        locationName,
+        postText: postText || aiContent?.gmbPost || '',
+      }),
     onSuccess: () => {
       toast.success('Posted to Google Business Profile')
     },
@@ -411,6 +438,26 @@ function HomeContent() {
       toast.error(getApiErrorMessage(error))
     },
   })
+
+  React.useEffect(() => {
+    const accounts = gmbAccountsQuery.data ?? []
+    if (
+      accounts.length > 0 &&
+      !accounts.some(account => account.name === selectedGmbAccountName)
+    ) {
+      setSelectedGmbAccountName(accounts[0].name)
+    }
+  }, [gmbAccountsQuery.data, selectedGmbAccountName])
+
+  React.useEffect(() => {
+    const locations = gmbLocationsQuery.data ?? []
+    if (
+      locations.length > 0 &&
+      !locations.some(location => location.postingName === selectedGmbLocationName)
+    ) {
+      setSelectedGmbLocationName(locations[0].postingName)
+    }
+  }, [gmbLocationsQuery.data, selectedGmbLocationName])
 
   React.useEffect(() => {
     const job = jobQuery.data
@@ -601,15 +648,15 @@ function HomeContent() {
       return
     }
 
-    const locationName =
-      jobQuery.data?.assignLocation?.trim() || assignLocation.trim()
-
-    if (!locationName) {
-      toast.error('A Google Business location is required')
+    if (!selectedGmbLocationName) {
+      toast.error('Select a Google Business Profile location first')
       return
     }
 
-    autoPostMutation.mutate({ jobId: activeJobId, locationName })
+    autoPostMutation.mutate({
+      jobId: activeJobId,
+      locationName: selectedGmbLocationName,
+    })
   }
 
   const handleDownloadImage = async () => {
@@ -985,6 +1032,101 @@ function HomeContent() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 p-0">
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
+                <div>
+                  <Label
+                    htmlFor="gmb-account"
+                    className="text-sm font-semibold text-slate-900"
+                  >
+                    Google Business Profile location
+                  </Label>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Choose where this post will be published. This is separate
+                    from the city or area used for AI content generation.
+                  </p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="gmb-account"
+                      className="text-xs font-medium text-slate-700"
+                    >
+                      Account
+                    </Label>
+                    <select
+                      id="gmb-account"
+                      value={selectedGmbAccountName}
+                      onChange={event => {
+                        setSelectedGmbAccountName(event.target.value)
+                        setSelectedGmbLocationName('')
+                      }}
+                      disabled={gmbAccountsQuery.isLoading || gmbAccountsQuery.isError}
+                      className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition-colors focus:border-[#4285F4] focus:ring-1 focus:ring-[#4285F4] disabled:cursor-not-allowed disabled:bg-slate-100"
+                    >
+                      {gmbAccountsQuery.isLoading ? (
+                        <option value="">Loading Google accounts…</option>
+                      ) : gmbAccountsQuery.data?.length ? (
+                        gmbAccountsQuery.data.map(account => (
+                          <option key={account.name} value={account.name}>
+                            {account.accountName || account.name}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">No Google accounts available</option>
+                      )}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="gmb-location"
+                      className="text-xs font-medium text-slate-700"
+                    >
+                      Location
+                    </Label>
+                    <select
+                      id="gmb-location"
+                      value={selectedGmbLocationName}
+                      onChange={event =>
+                        setSelectedGmbLocationName(event.target.value)
+                      }
+                      disabled={
+                        !selectedGmbAccountName ||
+                        gmbLocationsQuery.isLoading ||
+                        gmbLocationsQuery.isError
+                      }
+                      className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition-colors focus:border-[#4285F4] focus:ring-1 focus:ring-[#4285F4] disabled:cursor-not-allowed disabled:bg-slate-100"
+                    >
+                      {gmbLocationsQuery.isLoading ? (
+                        <option value="">Loading locations…</option>
+                      ) : gmbLocationsQuery.data?.length ? (
+                        gmbLocationsQuery.data.map(location => (
+                          <option
+                            key={location.postingName}
+                            value={location.postingName}
+                          >
+                            {location.title || location.name}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">No locations available</option>
+                      )}
+                    </select>
+                  </div>
+                </div>
+
+                {gmbAccountsQuery.isError ? (
+                  <p className="text-xs text-rose-600">
+                    {getApiErrorMessage(gmbAccountsQuery.error)}
+                  </p>
+                ) : gmbLocationsQuery.isError ? (
+                  <p className="text-xs text-rose-600">
+                    {getApiErrorMessage(gmbLocationsQuery.error)}
+                  </p>
+                ) : null}
+              </div>
+
               <div className="grid gap-2 sm:grid-cols-4">
                 <Button
                   type="button"
@@ -1021,6 +1163,7 @@ function HomeContent() {
                   disabled={
                     !activeJobId ||
                     currentStatus !== 'DONE' ||
+                    !selectedGmbLocationName ||
                     autoPostMutation.isPending
                   }
                 >
