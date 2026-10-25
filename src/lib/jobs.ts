@@ -74,6 +74,11 @@ export type DeleteJobResponse = {
   data: null
 }
 
+export type PostToGmbPayload = {
+  jobId: string
+  locationName: string
+}
+
 export type ParsedAiContent = {
   fileName: string
   title: string
@@ -416,6 +421,21 @@ export async function deleteJob(
 ): Promise<DeleteJobResponse> {
   const response = await axiosInstance.delete<ApiEnvelope<DeleteJobResponse>>(
     `/jobs/${jobId}`,
+    {
+      headers: authHeaders(accessToken),
+    },
+  )
+
+  return unwrap(response.data)
+}
+
+export async function postToGmb(
+  accessToken: string,
+  payload: PostToGmbPayload,
+) {
+  const response = await axiosInstance.post<ApiEnvelope<unknown>>(
+    '/gmb/post',
+    payload,
     {
       headers: authHeaders(accessToken),
     },
